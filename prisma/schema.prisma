@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// UTILISATEUR
+// ─────────────────────────────────────────────
+model User {
+  id          String   @id @default(uuid())
+  firebaseUid String   @unique @map("firebase_uid")
+  email       String?  @unique
+  phone       String?  @unique
+  provider    String   @default("email")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profile       Profile?
+  subscription  Subscription?
+  verification  Verification?
+  settings      UserSettings?
+  notifications Notification[]
+  sentLikes     Like[]         @relation("SentLikes")
+  receivedLikes Like[]         @relation("ReceivedLikes")
+  matches1      Match[]        @relation("MatchUser1")
+  matches2      Match[]        @relation("MatchUser2")
+  blocksGiven   Block[]        @relation("Blocker")
+  blocksReceived Block[]       @relation("Blocked")
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// PROFIL
+// ─────────────────────────────────────────────
+model Profile {
+  id               String          @id @default(uuid())
+  userId           String          @unique @map("user_id")
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName        String          @map("first_name")
+  lastName         String?         @map("last_name")
+  neighborhood     String?
+  bio              String?
+  birthdate        DateTime
+  gender           Gender
+  photos           String[]        @default([])
+  interests        String[]        @default([])
+  relationshipGoal RelationshipGoal @map("relationship_goal")
+  latitude         Float?
+  longitude        Float?
+  city             String?
+  isActive         Boolean         @default(true) @map("is_active")
+  isVerified       Boolean         @default(false) @map("is_verified")
+  lastSeenAt       DateTime        @default(now()) @map("last_seen_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  @@map("profiles")
+}
+
+// ─────────────────────────────────────────────
+// LIKE / SWIPE
+// ─────────────────────────────────────────────
+model Like {
+  id          String   @id @default(uuid())
+  senderId    String   @map("sender_id")
+  sender      User     @relation("SentLikes", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId  String   @map("receiver_id")
+  receiver    User     @relation("ReceivedLikes", fields: [receiverId], references: [id], onDelete: Cascade)
+  isSuperLike Boolean  @default(false) @map("is_super_like")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([senderId, receiverId])
+  @@map("likes")
+}
+
+// ─────────────────────────────────────────────
+// PASS (profils ignorés)
+// ─────────────────────────────────────────────
+model Pass {
+  id         String   @id @default(uuid())
+  passerId   String   @map("passer_id")
+  passedId   String   @map("passed_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([passerId, passedId])
+  @@map("passes")
+}
+
+// ─────────────────────────────────────────────
+// MATCH
+// ─────────────────────────────────────────────
+model Match {
+  id             String   @id @default(uuid())
+  user1Id        String   @map("user1_id")
+  user1          User     @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id        String   @map("user2_id")
+  user2          User     @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  conversationId String?  @map("conversation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([user1Id, user2Id])
+  @@map("matches")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATION
+// ─────────────────────────────────────────────
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json             @default("{}")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// ABONNEMENT
+// ─────────────────────────────────────────────
+model Subscription {
+  id            String             @id @default(uuid())
+  userId        String             @unique @map("user_id")
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          Plan
+  fedapayTxId   String?            @map("fedapay_tx_id")
+  fedapayStatus String?            @map("fedapay_status")
+  expiresAt     DateTime           @map("expires_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// VÉRIFICATION D'IDENTITÉ
+// ─────────────────────────────────────────────
+model Verification {
+  id          String             @id @default(uuid())
+  userId      String             @unique @map("user_id")
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idFrontUrl  String?            @map("id_front_url")
+  idBackUrl   String?            @map("id_back_url")
+  selfieUrl   String?            @map("selfie_url")
+  status      VerificationStatus @default(PENDING)
+  reviewedAt  DateTime?          @map("reviewed_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+// ─────────────────────────────────────────────
+// PARAMÈTRES UTILISATEUR
+// ─────────────────────────────────────────────
+model UserSettings {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifMatches       Boolean  @default(true) @map("notif_matches")
+  notifMessages      Boolean  @default(true) @map("notif_messages")
+  notifLikes         Boolean  @default(true) @map("notif_likes")
+  notifVisits        Boolean  @default(true) @map("notif_visits")
+  showOnlineStatus   Boolean  @default(true) @map("show_online_status")
+  showDistance       Boolean  @default(true) @map("show_distance")
+  showLastSeen       Boolean  @default(true) @map("show_last_seen")
+  minAge             Int      @default(18) @map("min_age")
+  maxAge             Int      @default(50) @map("max_age")
+  maxDistance        Int      @default(100) @map("max_distance")
+  genderPreference   String?  @map("gender_preference")
+  fcmToken           String?  @map("fcm_token")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+// ─────────────────────────────────────────────
+// OTP (vérification par SMS)
+// ─────────────────────────────────────────────
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  attempts  Int      @default(0)
+  expiresAt DateTime @map("expires_at")
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("otp_codes")
+}
+
+// ─────────────────────────────────────────────
+// BLOCAGE
+// ─────────────────────────────────────────────
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String   @map("blocked_id")
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RelationshipGoal {
+  FLIRT
+  LOVE
+}
+
+enum Plan {
+  DECOUVERTE
+  STANDARD
+  PREMIUM
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  MATCH
+  LIKE
+  MESSAGE
+  VISIT
+  SYSTEM
+}
