@@ -22,7 +22,7 @@ function createStorage(subDir: string): StorageEngine {
   });
 }
 
-function fileFilter(_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void {
+function fileFilter(_req: Request, file: any, cb: FileFilterCallback): void {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
