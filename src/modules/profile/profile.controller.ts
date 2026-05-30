@@ -57,12 +57,20 @@ export async function uploadPhoto(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) { badRequest(res, 'Aucune photo fournie'); return; }
 
-    // Upload vers Cloudinary
+    console.log('[upload] fichier reçu:', req.file.originalname,
+      req.file.mimetype, req.file.size, 'bytes',
+      'buffer:', req.file.buffer?.length ?? 0, 'bytes');
+
     const photoUrl = await uploadFileToCloud(req.file, 'affinity/photos');
-    const profile  = await addPhoto(req.user!.id, photoUrl);
+
+    console.log('[upload] Cloudinary URL:', photoUrl);
+
+    const profile = await addPhoto(req.user!.id, photoUrl);
     ok(res, { photos: profile.photos }, 'Photo ajoutée');
   } catch (err: unknown) {
-    serverError(res, err instanceof Error ? err.message : undefined);
+    const msg = err instanceof Error ? err.message : 'Erreur upload';
+    console.error('[upload] ERREUR:', msg);
+    serverError(res, msg);
   }
 }
 

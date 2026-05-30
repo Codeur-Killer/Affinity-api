@@ -18,6 +18,10 @@ import settingsRoutes from './modules/settings/settings.routes';
 
 const app = express();
 
+// Render (et autres PaaS) utilisent un reverse proxy — on lui fait confiance
+// pour que express-rate-limit puisse lire correctement X-Forwarded-For
+app.set('trust proxy', 1);
+
 // ─── Sécurité ──────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 

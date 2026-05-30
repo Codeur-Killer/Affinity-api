@@ -2,6 +2,13 @@ import { v2 as cloudinary } from 'cloudinary';
 import { env } from './env';
 
 export function initCloudinary(): void {
+  if (!env.CLOUDINARY_CLOUD_NAME || !env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET) {
+    console.error('❌ Cloudinary : variables manquantes →',
+      'CLOUDINARY_CLOUD_NAME:', !!env.CLOUDINARY_CLOUD_NAME,
+      'CLOUDINARY_API_KEY:', !!env.CLOUDINARY_API_KEY,
+      'CLOUDINARY_API_SECRET:', !!env.CLOUDINARY_API_SECRET);
+    throw new Error('Cloudinary non configuré — vérifiez les variables d\'environnement');
+  }
   cloudinary.config({
     cloud_name: env.CLOUDINARY_CLOUD_NAME,
     api_key:    env.CLOUDINARY_API_KEY,
