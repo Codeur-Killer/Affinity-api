@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const syncSchema = z.object({
   firebaseToken: z.string().min(1, 'Token Firebase requis'),
-  fcmToken: z.string().optional(),
+  fcmToken: z.string().nullish(), // accepte string, null ou undefined
 });
 
 export const deleteAccountSchema = z.object({

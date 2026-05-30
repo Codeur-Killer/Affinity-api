@@ -18,8 +18,8 @@ export function formatTogoPhone(raw: string): string {
 }
 
 // ── Envoi SMS via AfrikSMS ────────────────────────────────────────────────────
-async function sendSmsAfrik(phone: string, message: string): Promise<{ sent: boolean; error?: string }> {
-  const bodyJson = JSON.stringify({
+async function sendSmsAfrik(phone: string, message: string): Promise<void> {
+  const bodyJson = {
     client_id:    Number(env.SMS_CLIENT_ID),
     sender_id:    env.SMS_SENDER_ID,
     msisdn:       phone,
@@ -27,9 +27,11 @@ async function sendSmsAfrik(phone: string, message: string): Promise<{ sent: boo
     phone_number: phone,
     to:           phone,
     message,
-  });
+  };
 
-  // Essai 1 : JSON + Api-Key header
+  console.log('[AfrikSMS] Envoi vers', phone, '| URL:', env.SMS_API_URL);
+
+  // Tentative 1 : JSON
   try {
     const res = await axios.post(env.SMS_API_URL, bodyJson, {
       headers: {
@@ -40,48 +42,48 @@ async function sendSmsAfrik(phone: string, message: string): Promise<{ sent: boo
       timeout: 12000,
     });
     console.log('[AfrikSMS] ✅ HTTP', res.status, JSON.stringify(res.data));
-    return { sent: true };
+    return;
   } catch (err) {
-    if (axios.isAxiosError(err)) {
-      const status = err.response?.status;
-      const detail = JSON.stringify(err.response?.data ?? err.message);
-      console.error(`[AfrikSMS] HTTP ${status} : ${detail}`);
+    if (!axios.isAxiosError(err)) throw err;
 
-      // Essai 2 : form-encoded si l'API attend ce format
-      if (status !== 401) {
-        try {
-          const params = new URLSearchParams({
-            client_id: env.SMS_CLIENT_ID,
-            sender_id: env.SMS_SENDER_ID,
-            msisdn: phone,
-            msg: message,
-          });
-          const res2 = await axios.post(env.SMS_API_URL, params.toString(), {
-            headers: {
-              'Api-Key':      env.SMS_API_KEY,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            timeout: 8000,
-          });
-          console.log('[AfrikSMS] ✅ form OK HTTP', res2.status, JSON.stringify(res2.data));
-          return { sent: true };
-        } catch (err2) {
-          const d = axios.isAxiosError(err2)
-            ? `HTTP ${err2.response?.status}: ${JSON.stringify(err2.response?.data ?? err2.message)}`
-            : String(err2);
-          console.error('[AfrikSMS] form attempt:', d);
-        }
-      }
+    const status = err.response?.status;
+    const data   = err.response?.data;
+    console.error('[AfrikSMS] ❌ HTTP', status, JSON.stringify(data ?? err.message));
 
-      if (status === 401) {
-        return {
-          sent:  false,
-          error: 'Clé API AfrikSMS invalide (401). Régénérez votre clé sur https://app.afriksms.com/',
-        };
+    // Tentative 2 : form-encoded (si le serveur rejette le JSON)
+    if (status !== 401 && status !== 403) {
+      try {
+        const params = new URLSearchParams({
+          client_id: env.SMS_CLIENT_ID,
+          sender_id: env.SMS_SENDER_ID,
+          msisdn:    phone,
+          msg:       message,
+        });
+        const r2 = await axios.post(env.SMS_API_URL, params.toString(), {
+          headers: {
+            'Api-Key':      env.SMS_API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 10000,
+        });
+        console.log('[AfrikSMS] ✅ form-encoded OK HTTP', r2.status, JSON.stringify(r2.data));
+        return;
+      } catch (err2) {
+        const d = axios.isAxiosError(err2)
+          ? `HTTP ${err2.response?.status}: ${JSON.stringify(err2.response?.data)}`
+          : String(err2);
+        console.error('[AfrikSMS] ❌ form-encoded aussi échoué:', d);
       }
-      return { sent: false, error: `AfrikSMS HTTP ${status}: ${detail}` };
     }
-    return { sent: false, error: String(err) };
+
+    // Construire un message d'erreur clair
+    if (status === 401 || status === 403) {
+      throw new Error(
+        'Clé API AfrikSMS invalide ou non autorisée. ' +
+        'Vérifiez SMS_API_KEY dans les variables d\'environnement Render.',
+      );
+    }
+    throw new Error(`AfrikSMS HTTP ${status}: ${JSON.stringify(data)}`);
   }
 }
 
@@ -97,32 +99,19 @@ export async function sendOtp(rawPhone: string): Promise<void> {
     data:  { expiresAt: new Date(0) },
   });
 
-  // Sauvegarde le nouveau code en base
+  // Sauvegarde le code en base
   await prisma.otpCode.create({ data: { phone, code, expiresAt } });
 
-  // Toujours visible dans les logs (essentiel pour le debug)
+  // Log toujours visible (développement + debug production)
   console.log('\n' + '='.repeat(50));
-  console.log(`📱 [OTP] Numéro : ${phone}`);
-  console.log(`🔑 [OTP] Code   : ${code}  (valable 5 min)`);
+  console.log(`📱 OTP pour ${phone} : ${code}  (5 min)`);
   console.log('='.repeat(50) + '\n');
 
-  // Tentative d'envoi SMS
-  const result = await sendSmsAfrik(
+  // Envoi SMS — bloquant : si ça échoue, l'utilisateur est informé
+  await sendSmsAfrik(
     phone,
-    `Votre code Affinity : ${code}\nValable 5 min. Ne partagez jamais ce code.`,
+    `Votre code Affinity : ${code}\nValable 5 minutes. Ne partagez jamais ce code.`,
   );
-
-  if (!result.sent) {
-    // SMS non envoyé → l'utilisateur peut lire le code dans les logs du serveur
-    // En production, le code ci-dessous devrait lever une erreur
-    // En dev, on continue pour que le flow soit testable
-    console.warn('\n⚠️  SMS non envoyé — utilisez le code dans les logs ci-dessus');
-    console.warn(`⚠️  Cause : ${result.error}`);
-    console.warn('⚠️  → Vérifiez votre clé AfrikSMS sur https://app.afriksms.com/\n');
-
-    // En production, décommenter cette ligne pour bloquer si SMS échoue :
-    // throw new Error('Impossible d\'envoyer le SMS. Vérifiez vos identifiants AfrikSMS.');
-  }
 }
 
 // ── Vérifie l'OTP ─────────────────────────────────────────────────────────────
