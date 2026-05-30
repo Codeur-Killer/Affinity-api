@@ -5,7 +5,7 @@ import { ok, badRequest, serverError } from '../../utils/response';
 
 export async function uploadIdCard(req: Request, res: Response): Promise<void> {
   try {
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as { [fieldname: string]: any[] } | undefined;
     const front = files?.['idFront']?.[0];
     const back = files?.['idBack']?.[0];
 
@@ -16,6 +16,7 @@ export async function uploadIdCard(req: Request, res: Response): Promise<void> {
 
     const frontUrl = getFileUrl(req, front.path);
     const backUrl = getFileUrl(req, back.path);
+
     const verification = await submitIdCard(req.user!.id, frontUrl, backUrl);
     ok(res, verification, 'Carte d\'identité soumise');
   } catch {
@@ -25,7 +26,7 @@ export async function uploadIdCard(req: Request, res: Response): Promise<void> {
 
 export async function uploadSelfie(req: Request, res: Response): Promise<void> {
   try {
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as { [fieldname: string]: any[] } | undefined;
     const selfieFile = files?.['selfie']?.[0];
 
     if (!selfieFile) {
@@ -34,6 +35,7 @@ export async function uploadSelfie(req: Request, res: Response): Promise<void> {
     }
 
     const selfieUrl = getFileUrl(req, selfieFile.path);
+
     const verification = await submitSelfie(req.user!.id, selfieUrl);
     ok(res, verification, 'Selfie soumis');
   } catch {
