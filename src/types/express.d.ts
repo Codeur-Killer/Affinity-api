@@ -1,4 +1,5 @@
 import { User } from '@prisma/client';
+import { Multer } from 'multer';
 
 declare global {
   namespace Express {
@@ -8,6 +9,8 @@ declare global {
         firebaseUid: string;
         email?: string | null;
       };
+      file?: Multer.File;
+      files?: Multer.File[];
     }
   }
 }
