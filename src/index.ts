@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { env } from './config/env';
 import { connectDB, disconnectDB } from './config/prisma';
 import { initFirebase } from './config/firebase';
+import { initCloudinary } from './config/cloudinary';
 import app from './app';
 import fs from 'fs';
 import path from 'path';
@@ -23,8 +24,7 @@ async function bootstrap(): Promise<void> {
     console.warn('⚠️  Firebase Admin non initialisé (configurez FIREBASE_* dans .env)');
   }
 
-  // Initialiser Cloudinary
-  const { initCloudinary } = await import('./config/cloudinary');
+  // Initialiser Cloudinary (avant le démarrage du serveur)
   initCloudinary();
 
   // Connexion à la base de données

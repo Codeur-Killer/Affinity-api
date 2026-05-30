@@ -4,10 +4,9 @@ import { authenticate } from '../../middleware/auth.middleware';
 import { uploadVerification } from '../../middleware/upload.middleware';
 
 const router = Router();
-
 router.use(authenticate);
 
-const handleUpload = (req: Request, res: Response, next: NextFunction) => {
+function handleUpload(req: Request, res: Response, next: NextFunction): void {
   uploadVerification(req, res, (err) => {
     if (err) {
       res.status(400).json({ success: false, message: err.message });
@@ -15,10 +14,10 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
     }
     next();
   });
-};
+}
 
 router.post('/id-card', handleUpload, uploadIdCard);
-router.post('/selfie', handleUpload, uploadSelfie);
-router.get('/status', status);
+router.post('/selfie',  handleUpload, uploadSelfie);
+router.get('/status',   status);
 
 export default router;
