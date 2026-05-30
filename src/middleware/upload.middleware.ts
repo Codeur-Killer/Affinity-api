@@ -1,4 +1,4 @@
-import multer from 'multer';
+import multer, { FileFilterCallback } from 'multer';
 import { Request } from 'express';
 import { env } from '../config/env';
 import { uploadToCloudinary } from '../config/cloudinary';
@@ -8,7 +8,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'
 function fileFilter(
   _req: Request,
   file: Express.Multer.File,
-  cb: multer.FileFilterCallback,
+  cb:   FileFilterCallback,
 ): void {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
@@ -17,12 +17,12 @@ function fileFilter(
   }
 }
 
-// Tout passe par la mémoire → upload direct vers Cloudinary
+// Stockage en mémoire → upload direct vers Cloudinary
 const memStorage = multer.memoryStorage();
 
 const multerOpts = {
-  storage:   memStorage,
-  limits:    { fileSize: env.MAX_FILE_SIZE_BYTES },
+  storage:    memStorage,
+  limits:     { fileSize: env.MAX_FILE_SIZE_BYTES },
   fileFilter,
 };
 
@@ -33,7 +33,7 @@ export const uploadVerification = multer(multerOpts).fields([
   { name: 'selfie',  maxCount: 1 },
 ]);
 
-/** Upload vers Cloudinary et retourne l'URL sécurisée */
+/** Upload vers Cloudinary — retourne l'URL sécurisée */
 export async function uploadFileToCloud(
   file:   Express.Multer.File,
   folder: string,
