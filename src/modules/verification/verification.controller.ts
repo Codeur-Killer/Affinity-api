@@ -5,7 +5,7 @@ import { ok, badRequest, serverError } from '../../utils/response';
 
 export async function uploadIdCard(req: Request, res: Response): Promise<void> {
   try {
-    const files = req.files as { [f: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as { [f: string]: any[] } | undefined;
     const front = files?.['idFront']?.[0];
     const back  = files?.['idBack']?.[0];
 
@@ -23,7 +23,7 @@ export async function uploadIdCard(req: Request, res: Response): Promise<void> {
 
 export async function uploadSelfie(req: Request, res: Response): Promise<void> {
   try {
-    const files = req.files as { [f: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as { [f: string]: any[] } | undefined;
     const file  = files?.['selfie']?.[0];
 
     if (!file) { badRequest(res, 'Selfie requis'); return; }
