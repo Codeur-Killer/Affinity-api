@@ -19,9 +19,13 @@ async function bootstrap(): Promise<void> {
   // Initialiser Firebase Admin SDK
   try {
     initFirebase();
-  } catch (err) {
+  } catch {
     console.warn('⚠️  Firebase Admin non initialisé (configurez FIREBASE_* dans .env)');
   }
+
+  // Initialiser Cloudinary
+  const { initCloudinary } = await import('./config/cloudinary');
+  initCloudinary();
 
   // Connexion à la base de données
   await connectDB();

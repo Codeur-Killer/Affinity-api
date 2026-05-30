@@ -17,77 +17,41 @@ export function formatTogoPhone(raw: string): string {
   return `+${digits}`;
 }
 
-// ── Envoi SMS via AfrikSMS ────────────────────────────────────────────────────
+// ── AfrikSMS — GET avec query params (comme le service Laravel officiel) ──────
 async function sendSmsAfrik(phone: string, message: string): Promise<void> {
-  const bodyJson = {
-    client_id:    Number(env.SMS_CLIENT_ID),
-    sender_id:    env.SMS_SENDER_ID,
-    msisdn:       phone,
-    msg:          message,
-    phone_number: phone,
-    to:           phone,
-    message,
-  };
+  // Construire l'URL exactement comme le PHP :
+  // ?ClientId=...&ApiKey=...&SenderId=...&Message=...&MobileNumbers=...
+  const params = new URLSearchParams({
+    ClientId:      env.SMS_CLIENT_ID,
+    ApiKey:        env.SMS_API_KEY,
+    SenderId:      env.SMS_SENDER_ID,
+    Message:       message,
+    MobileNumbers: phone,
+  });
 
-  console.log('[AfrikSMS] Envoi vers', phone, '| URL:', env.SMS_API_URL);
+  const url = `${env.SMS_API_URL}?${params.toString()}`;
 
-  // Tentative 1 : JSON
-  try {
-    const res = await axios.post(env.SMS_API_URL, bodyJson, {
-      headers: {
-        'Api-Key':       env.SMS_API_KEY,
-        'Authorization': `Bearer ${env.SMS_API_KEY}`,
-        'Content-Type':  'application/json',
-      },
-      timeout: 12000,
-    });
-    console.log('[AfrikSMS] ✅ HTTP', res.status, JSON.stringify(res.data));
-    return;
-  } catch (err) {
-    if (!axios.isAxiosError(err)) throw err;
+  console.log('[AfrikSMS] GET →', url.replace(env.SMS_API_KEY, '***'));
 
-    const status = err.response?.status;
-    const data   = err.response?.data;
-    console.error('[AfrikSMS] ❌ HTTP', status, JSON.stringify(data ?? err.message));
+  const res = await axios.get(url, {
+    timeout:         30000,
+    maxRedirects:    10,
+    validateStatus:  (s) => s < 500, // ne pas throw sur les 4xx, on les logge
+  });
 
-    // Tentative 2 : form-encoded (si le serveur rejette le JSON)
-    if (status !== 401 && status !== 403) {
-      try {
-        const params = new URLSearchParams({
-          client_id: env.SMS_CLIENT_ID,
-          sender_id: env.SMS_SENDER_ID,
-          msisdn:    phone,
-          msg:       message,
-        });
-        const r2 = await axios.post(env.SMS_API_URL, params.toString(), {
-          headers: {
-            'Api-Key':      env.SMS_API_KEY,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          timeout: 10000,
-        });
-        console.log('[AfrikSMS] ✅ form-encoded OK HTTP', r2.status, JSON.stringify(r2.data));
-        return;
-      } catch (err2) {
-        const d = axios.isAxiosError(err2)
-          ? `HTTP ${err2.response?.status}: ${JSON.stringify(err2.response?.data)}`
-          : String(err2);
-        console.error('[AfrikSMS] ❌ form-encoded aussi échoué:', d);
-      }
-    }
+  const httpCode = res.status;
+  const data     = res.data;
 
-    // Construire un message d'erreur clair
-    if (status === 401 || status === 403) {
-      throw new Error(
-        'Clé API AfrikSMS invalide ou non autorisée. ' +
-        'Vérifiez SMS_API_KEY dans les variables d\'environnement Render.',
-      );
-    }
-    throw new Error(`AfrikSMS HTTP ${status}: ${JSON.stringify(data)}`);
+  console.log('[AfrikSMS] HTTP', httpCode, ':', JSON.stringify(data));
+
+  if (![200, 201].includes(httpCode)) {
+    throw new Error(
+      `AfrikSMS HTTP ${httpCode}: ${JSON.stringify(data)}`,
+    );
   }
 }
 
-// ── Envoie un OTP ─────────────────────────────────────────────────────────────
+// ── Envoie un OTP ──────────────────────────────────────────────────────────────
 export async function sendOtp(rawPhone: string): Promise<void> {
   const phone     = formatTogoPhone(rawPhone);
   const code      = generateOtpCode();
@@ -99,27 +63,22 @@ export async function sendOtp(rawPhone: string): Promise<void> {
     data:  { expiresAt: new Date(0) },
   });
 
-  // Sauvegarde le code en base
   await prisma.otpCode.create({ data: { phone, code, expiresAt } });
 
-  // Log toujours visible (développement + debug production)
+  // Log toujours visible (debug + backup si SMS échoue)
   console.log('\n' + '='.repeat(50));
-  console.log(`📱 OTP pour ${phone} : ${code}  (5 min)`);
+  console.log(`📱 OTP ${phone} : ${code}  (5 min)`);
   console.log('='.repeat(50) + '\n');
 
-  // Envoi SMS — bloquant : si ça échoue, l'utilisateur est informé
   await sendSmsAfrik(
     phone,
     `Votre code Affinity : ${code}\nValable 5 minutes. Ne partagez jamais ce code.`,
   );
 }
 
-// ── Vérifie l'OTP ─────────────────────────────────────────────────────────────
+// ── Vérifie l'OTP ──────────────────────────────────────────────────────────────
 export interface OtpVerifyResult {
-  token:           string;
-  userId:          string;
-  isNewUser:       boolean;
-  profileComplete: boolean;
+  token: string; userId: string; isNewUser: boolean; profileComplete: boolean;
 }
 
 export async function verifyOtp(rawPhone: string, code: string): Promise<OtpVerifyResult> {
@@ -131,17 +90,12 @@ export async function verifyOtp(rawPhone: string, code: string): Promise<OtpVeri
   });
 
   if (!record) throw new Error('Code expiré. Appuyez sur « Renvoyer ».');
-
   if (record.attempts >= MAX_ATTEMPTS) {
     await prisma.otpCode.update({ where: { id: record.id }, data: { expiresAt: new Date(0) } });
     throw new Error('Trop de tentatives. Demandez un nouveau code.');
   }
-
   if (record.code !== code) {
-    await prisma.otpCode.update({
-      where: { id: record.id },
-      data:  { attempts: { increment: 1 } },
-    });
+    await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
     throw new Error(`Code incorrect. ${MAX_ATTEMPTS - record.attempts - 1} tentative(s) restante(s).`);
   }
 

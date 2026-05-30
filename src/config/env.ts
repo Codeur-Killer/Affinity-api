@@ -23,12 +23,16 @@ const envSchema = z.object({
   FEDAPAY_BASE_URL: z.string().default('https://api.sandbox.fedapay.com'),
 
   UPLOAD_DIR: z.string().default('uploads'),
-  MAX_FILE_SIZE_MB: z.string().default('5'),
+  MAX_FILE_SIZE_MB: z.string().default('10'),
 
   SMS_API_URL: z.string().default('https://api.afriksms.com/api/web/web_v1/outbounds/send'),
   SMS_API_KEY: z.string(),
   SMS_CLIENT_ID: z.string(),
   SMS_SENDER_ID: z.string().default('Affinity'),
+
+  CLOUDINARY_CLOUD_NAME: z.string(),
+  CLOUDINARY_API_KEY: z.string(),
+  CLOUDINARY_API_SECRET: z.string(),
 });
 
 const parsed = envSchema.safeParse(process.env);
