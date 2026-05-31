@@ -33,20 +33,26 @@ const fedapayHeaders = () => ({
 });
 
 // ── Extrait le vrai objet transaction de la réponse FedaPay ──────────────────
+// FedaPay retourne { "v1/transaction": {...} } (clé avec slash)
 function parseTx(data: unknown): Record<string, unknown> | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
-  const tx = (d.v1 as Record<string, unknown>)?.transaction
-    ?? d.transaction
-    ?? (d.id ? d : null);
-  return tx as Record<string, unknown> | null;
+  // Format réel : { "v1/transaction": { id, payment_url, ... } }
+  const bySlashKey = d['v1/transaction'] as Record<string, unknown> | undefined;
+  if (bySlashKey?.id) return bySlashKey;
+  // Formats alternatifs (au cas où)
+  const byV1 = (d.v1 as Record<string, unknown>)?.transaction as Record<string, unknown> | undefined;
+  if (byV1?.id) return byV1;
+  if (d.transaction) return d.transaction as Record<string, unknown>;
+  if (d.id)          return d;
+  return null;
 }
 
-// ── Construit l'URL de checkout FedaPay ───────────────────────────────────────
+// ── Construit l'URL de checkout FedaPay (fallback si payment_url absent) ─────
 function buildCheckoutUrl(tokenOrId: string): string {
   const base = isSandbox
-    ? 'https://sandbox-checkout.fedapay.com'
-    : 'https://checkout.fedapay.com';
+    ? 'https://sandbox-process.fedapay.com'  // URL réelle sandbox
+    : 'https://process.fedapay.com';
   return `${base}/payment-page/${tokenOrId}`;
 }
 
@@ -93,11 +99,11 @@ export async function createCheckout(
     }
     txId = tx.id as string | number;
 
-    // ✅ FedaPay v2 retourne payment_url ET payment_token directement dans la transaction
-    const directUrl = (tx.payment_url ?? tx.paymentUrl) as string | undefined;
+    // ✅ FedaPay retourne payment_url directement dans la réponse de création
+    const directUrl = tx.payment_url as string | undefined;
+    console.log('[FedaPay] Transaction créée:', txId, '| payment_url:', directUrl ?? '(absent)');
+
     if (directUrl) {
-      console.log('[FedaPay] Transaction créée:', txId, '→ URL directe disponible');
-      // Sauvegarder et retourner immédiatement
       const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
       await prisma.subscription.upsert({
         where:  { userId },
@@ -106,8 +112,6 @@ export async function createCheckout(
       });
       return { transactionId: txId, paymentUrl: directUrl, plan, amount: planInfo.amount };
     }
-
-    console.log('[FedaPay] Transaction créée:', txId, '(pas d\'URL directe, on appellera /token)');
   } catch (e) {
     if (e instanceof AxiosError) {
       const status = e.response?.status;
