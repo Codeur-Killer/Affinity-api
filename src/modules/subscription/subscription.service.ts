@@ -18,11 +18,16 @@ export interface CheckoutResult {
   amount: number;
 }
 
-// La clé sandbox commence par 'sk_sandbox_' — on détecte par la clé, pas l'URL
 const isSandbox = env.FEDAPAY_SECRET_KEY.startsWith('sk_sandbox_');
 
+// Log de debug au démarrage pour vérifier la clé (masquée)
+const _keyPreview = env.FEDAPAY_SECRET_KEY.length > 8
+  ? `${env.FEDAPAY_SECRET_KEY.slice(0, 12)}...${env.FEDAPAY_SECRET_KEY.slice(-4)}`
+  : '(VIDE ou trop courte)';
+console.log(`[FedaPay] Clé configurée : ${_keyPreview} | Sandbox: ${isSandbox} | URL: ${env.FEDAPAY_BASE_URL}`);
+
 const fedapayHeaders = () => ({
-  Authorization: `Bearer ${env.FEDAPAY_SECRET_KEY}`,
+  Authorization: `Bearer ${env.FEDAPAY_SECRET_KEY.trim()}`, // trim() au cas où espaces parasites
   'Content-Type': 'application/json',
   Accept: 'application/json',
 });
