@@ -71,6 +71,8 @@ export async function createCheckout(
   if (!planInfo) throw new Error('Plan invalide');
 
   const callbackUrl = `${env.API_URL}/api/subscription/webhook`;
+  // return_url = URL interceptée par le WebView Flutter pour détecter la fin du paiement
+  const returnUrl   = `${env.API_URL}/api/subscription/result?status=success&plan=${plan}`;
 
   // 1. Créer la transaction
   let txId: string | number;
@@ -87,6 +89,7 @@ export async function createCheckout(
           lastname:  customer.lastname,
         },
         callback_url:       callbackUrl,
+        return_url:         returnUrl,
         additional_details: `userId=${userId}&plan=${plan}`,
       },
       { headers: fedapayHeaders(), timeout: 20000 },
@@ -103,14 +106,17 @@ export async function createCheckout(
     const directUrl = tx.payment_url as string | undefined;
     console.log('[FedaPay] Transaction créée:', txId, '| payment_url:', directUrl ?? '(absent)');
 
-    if (directUrl) {
+    if (directUrl || txId) {
       const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
       await prisma.subscription.upsert({
         where:  { userId },
         update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
         create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
       });
-      return { transactionId: txId, paymentUrl: directUrl, plan, amount: planInfo.amount };
+      // ✅ Utiliser notre page de paiement hébergée au lieu de sandbox-process.fedapay.com
+      // (qui bloque les connexions depuis Android)
+      const hostedUrl = `${env.API_URL}/payment?txId=${txId}&plan=${plan}&amount=${planInfo.amount}`;
+      return { transactionId: txId, paymentUrl: hostedUrl, plan, amount: planInfo.amount };
     }
   } catch (e) {
     if (e instanceof AxiosError) {
