@@ -15,6 +15,7 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import subscriptionRoutes from './modules/subscription/subscription.routes';
 import verificationRoutes from './modules/verification/verification.routes';
 import settingsRoutes from './modules/settings/settings.routes';
+import adminRoutes from './modules/admin/admin.routes';
 
 const app = express();
 
@@ -183,6 +184,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/admin',   adminRoutes);
 
 // ─── Gestion des erreurs ───────────────────────────────
 app.use(notFoundHandler);
