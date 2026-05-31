@@ -20,7 +20,7 @@ const envSchema = z.object({
 
   FEDAPAY_PUBLIC_KEY: z.string().min(1),
   FEDAPAY_SECRET_KEY: z.string().min(20, 'Clé FedaPay trop courte — vérifiez sur app.fedapay.com'),
-  FEDAPAY_BASE_URL:   z.string().default('https://api.fedapay.com'),
+  FEDAPAY_BASE_URL:   z.string().default('https://sandbox-api.fedapay.com'),
 
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE_MB: z.string().default('10'),

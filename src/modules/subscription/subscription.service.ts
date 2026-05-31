@@ -88,27 +88,35 @@ export async function createCheckout(
 
     const tx = parseTx(res.data);
     if (!tx?.id) {
-      console.error('[FedaPay] Réponse création transaction:', JSON.stringify(res.data));
+      console.error('[FedaPay] Réponse:', JSON.stringify(res.data).substring(0, 300));
       throw new Error('FedaPay: aucun ID de transaction reçu');
     }
     txId = tx.id as string | number;
-    console.log('[FedaPay] Transaction créée:', txId);
+
+    // ✅ FedaPay v2 retourne payment_url ET payment_token directement dans la transaction
+    const directUrl = (tx.payment_url ?? tx.paymentUrl) as string | undefined;
+    if (directUrl) {
+      console.log('[FedaPay] Transaction créée:', txId, '→ URL directe disponible');
+      // Sauvegarder et retourner immédiatement
+      const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
+      await prisma.subscription.upsert({
+        where:  { userId },
+        update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
+        create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
+      });
+      return { transactionId: txId, paymentUrl: directUrl, plan, amount: planInfo.amount };
+    }
+
+    console.log('[FedaPay] Transaction créée:', txId, '(pas d\'URL directe, on appellera /token)');
   } catch (e) {
     if (e instanceof AxiosError) {
       const status = e.response?.status;
       const body   = JSON.stringify(e.response?.data ?? e.message);
       console.error(`[FedaPay] Erreur création: HTTP ${status} – ${body}`);
-
       if (status === 401) {
         throw new Error(
-          'Clé FedaPay invalide (401). ' +
-          'Vérifiez FEDAPAY_SECRET_KEY dans votre .env sur https://app.sandbox.fedapay.com → Paramètres → Clés API',
-        );
-      }
-      if (!e.response) {
-        throw new Error(
-          `FedaPay inaccessible (${e.code ?? 'timeout'}). ` +
-          `URL: ${env.FEDAPAY_BASE_URL}`,
+          `Clé FedaPay invalide (401). URL: ${env.FEDAPAY_BASE_URL}. ` +
+          'Vérifiez FEDAPAY_SECRET_KEY sur app.fedapay.com → Paramètres → Clés API',
         );
       }
       throw new Error(`FedaPay erreur ${status}: ${body}`);
@@ -116,7 +124,7 @@ export async function createCheckout(
     throw e;
   }
 
-  // 2. Générer le token de paiement
+  // 2. Fallback : appeler /token si payment_url n'était pas dans la réponse
   let paymentUrl: string;
   try {
     const tokenRes = await axios.post(
@@ -124,27 +132,12 @@ export async function createCheckout(
       {},
       { headers: fedapayHeaders(), timeout: 15000 },
     );
-    console.log('[FedaPay] Token response:', JSON.stringify(tokenRes.data));
-
-    const td = tokenRes.data as Record<string, unknown>;
-    // FedaPay peut renvoyer le champ "url" directement ou le token seul
-    const url   = td.url   as string | undefined
-      ?? (td.v1 as Record<string, unknown>)?.url   as string | undefined;
-    const token = td.token as string | undefined
-      ?? (td.v1 as Record<string, unknown>)?.token as string | undefined;
-
-    if (url) {
-      paymentUrl = url;
-    } else if (token) {
-      paymentUrl = buildCheckoutUrl(token);
-    } else {
-      paymentUrl = buildCheckoutUrl(String(txId));
-    }
-  } catch (e) {
-    if (e instanceof AxiosError) {
-      console.error('[FedaPay] Erreur token:', JSON.stringify(e.response?.data ?? e.message));
-    }
-    // Fallback : URL basée sur l'ID de transaction
+    const td    = tokenRes.data as Record<string, unknown>;
+    const url   = (td.payment_url ?? td.url ?? (td.v1 as Record<string, unknown>)?.url) as string | undefined;
+    const token = (td.payment_token ?? td.token ?? (td.v1 as Record<string, unknown>)?.token) as string | undefined;
+    paymentUrl  = url ?? (token ? buildCheckoutUrl(token) : buildCheckoutUrl(String(txId)));
+    console.log('[FedaPay] Token URL:', paymentUrl);
+  } catch {
     paymentUrl = buildCheckoutUrl(String(txId));
   }
 
