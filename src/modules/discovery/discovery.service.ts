@@ -231,14 +231,23 @@ export async function likeUser(
 
     let conversationId: string | undefined;
     try {
-      conversationId = await createFirestoreConversation(
-        match.id, senderId, receiverId,
-      );
+      // Utiliser les Firebase UIDs pour que les règles Firestore fonctionnent
+      // (request.auth.uid dans Firestore = Firebase UID, pas le UUID PostgreSQL)
+      const [u1, u2] = await Promise.all([
+        prisma.user.findUnique({ where: { id: senderId },   select: { firebaseUid: true } }),
+        prisma.user.findUnique({ where: { id: receiverId }, select: { firebaseUid: true } }),
+      ]);
+      const fbUid1 = u1?.firebaseUid ?? senderId;
+      const fbUid2 = u2?.firebaseUid ?? receiverId;
+
+      conversationId = await createFirestoreConversation(match.id, fbUid1, fbUid2);
       await prisma.match.update({
         where: { id: match.id },
         data:  { conversationId },
       });
-    } catch { /* Firestore optionnel */ }
+    } catch (e) {
+      console.error('[Firestore] Erreur création conversation:', e);
+    }
 
     const senderName   = senderProfile?.firstName ?? 'Quelqu\'un';
     const receiverName = (await prisma.profile.findUnique({ where: { userId: receiverId } }))?.firstName ?? 'Votre match';
