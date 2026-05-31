@@ -2,6 +2,7 @@ import axios from 'axios';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { signToken } from '../../utils/jwt';
+import { getFirebaseAuth } from '../../config/firebase';
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS  = 5;
@@ -78,7 +79,11 @@ export async function sendOtp(rawPhone: string): Promise<void> {
 
 // ── Vérifie l'OTP ──────────────────────────────────────────────────────────────
 export interface OtpVerifyResult {
-  token: string; userId: string; isNewUser: boolean; profileComplete: boolean;
+  token:             string;
+  userId:            string;
+  isNewUser:         boolean;
+  profileComplete:   boolean;
+  firebaseToken?:    string; // custom token Firebase pour Firestore
 }
 
 export async function verifyOtp(rawPhone: string, code: string): Promise<OtpVerifyResult> {
@@ -117,7 +122,17 @@ export async function verifyOtp(rawPhone: string, code: string): Promise<OtpVeri
     });
   }
 
-  const token = signToken({ userId: user.id, firebaseUid: user.firebaseUid, email: user.email });
+  const token         = signToken({ userId: user.id, firebaseUid: user.firebaseUid, email: user.email });
   const profileComplete = !!(user as typeof user & { profile: unknown }).profile;
-  return { token, userId: user.id, isNewUser, profileComplete };
+
+  // Créer un custom token Firebase avec le firebaseUid comme UID
+  // Cela permet à l'utilisateur phone de s'authentifier auprès de Firestore
+  let firebaseToken: string | undefined;
+  try {
+    firebaseToken = await getFirebaseAuth().createCustomToken(user.firebaseUid);
+  } catch (e) {
+    console.warn('[OTP] Impossible de créer le custom token Firebase:', e);
+  }
+
+  return { token, userId: user.id, isNewUser, profileComplete, firebaseToken };
 }
