@@ -281,9 +281,14 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
     '| réponse:', JSON.stringify(txRes.data).slice(0, 300));
 
   if (txRes.status >= 400) {
-    const fedaMsg = (txRes.data as Record<string,unknown>)?.message
-      ?? JSON.stringify(txRes.data).slice(0, 200);
-    throw new Error(`FedaPay erreur ${txRes.status} : ${fedaMsg}`);
+    const body    = txRes.data as Record<string, unknown>;
+    const errors  = body?.errors as Record<string, string[]> | undefined;
+    // Extraire les erreurs de validation FedaPay (ex: montant max dépassé)
+    const detail  = errors
+      ? Object.entries(errors).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ')
+      : String(body?.message ?? 'Erreur inconnue');
+    console.error('[FedaPay Mobile] Erreur création:', txRes.status, detail);
+    throw new Error(detail);
   }
 
   const tx = parseTx(txRes.data);
