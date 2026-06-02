@@ -243,30 +243,51 @@ async function payMobileMoney(input) {
         throw new Error('FedaPay : aucun ID de transaction reçu');
     const txId = tx.id;
     console.log('[FedaPay Mobile] Transaction créée:', txId);
-    // 2. Initier le paiement Mobile Money directement
-    const payRes = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`, {
-        payment_method: network, // 'tm_money' | 'flooz' | 'mtn'
-        phone_number: {
-            number: normalizedPhone,
-            country: 'TG',
-        },
-    }, { headers: fedapayHeaders(), timeout: 20000 });
-    const payData = payRes.data;
-    const payStatus = (payData.status ?? tx.status ?? 'pending').toLowerCase();
-    console.log('[FedaPay Mobile] Paiement initié, statut:', payStatus);
-    // 3. Sauvegarder en DB (statut pending — sera mis à jour par le webhook)
+    // 2. Tenter l'initiation USSD directe (fonctionne avec les clés live, pas sandbox)
+    let ussdInitiated = false;
+    try {
+        const payRes = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`, {
+            payment_method: network,
+            phone_number: { number: normalizedPhone, country: 'TG' },
+        }, { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true });
+        if (payRes.status < 400) {
+            ussdInitiated = true;
+            console.log('[FedaPay Mobile] USSD initié, statut HTTP:', payRes.status);
+        }
+        else {
+            console.log('[FedaPay Mobile] /pay non disponible (sandbox?):', payRes.status, JSON.stringify(payRes.data).slice(0, 150));
+        }
+    }
+    catch (e) {
+        console.log('[FedaPay Mobile] /pay exception (sandbox?):', String(e).slice(0, 100));
+    }
+    // 3. Sauvegarder en DB
     const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
     await prisma_1.prisma.subscription.upsert({
         where: { userId },
         update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
         create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
     });
+    if (ussdInitiated) {
+        // Production : prompt USSD envoyé sur le téléphone
+        return {
+            transactionId: txId,
+            status: 'pending',
+            message: 'Confirmez le paiement sur votre téléphone (prompt USSD)',
+            plan,
+            amount: planInfo.amount,
+        };
+    }
+    // Sandbox (ou clés live non encore activées) : retourner l'URL de checkout FedaPay
+    const checkoutUrl = `${env_1.env.API_URL}/payment?txId=${txId}&plan=${plan}&amount=${planInfo.amount}`;
+    console.log('[FedaPay Mobile] Fallback checkout URL:', checkoutUrl);
     return {
         transactionId: txId,
-        status: payStatus,
-        message: 'Confirmez le paiement sur votre téléphone (prompt USSD)',
+        status: 'pending',
+        message: 'Ouvrez le lien pour finaliser le paiement Mobile Money',
         plan,
         amount: planInfo.amount,
+        checkoutUrl,
     };
 }
 // Vérifier le statut d'un paiement mobile money (polling depuis Flutter)

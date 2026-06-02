@@ -239,6 +239,7 @@ export interface MobilePayResult {
   message:       string;
   plan:          Plan;
   amount:        number;
+  checkoutUrl?:  string;  // présent si USSD non disponible (sandbox) → Flutter ouvre WebView
 }
 
 export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayResult> {
@@ -276,24 +277,30 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
   const txId = tx.id as string | number;
   console.log('[FedaPay Mobile] Transaction créée:', txId);
 
-  // 2. Initier le paiement Mobile Money directement
-  const payRes = await axios.post(
-    `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`,
-    {
-      payment_method: network,      // 'tm_money' | 'flooz' | 'mtn'
-      phone_number: {
-        number:  normalizedPhone,
-        country: 'TG',
+  // 2. Tenter l'initiation USSD directe (fonctionne avec les clés live, pas sandbox)
+  let ussdInitiated = false;
+  try {
+    const payRes = await axios.post(
+      `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`,
+      {
+        payment_method: network,
+        phone_number:   { number: normalizedPhone, country: 'TG' },
       },
-    },
-    { headers: fedapayHeaders(), timeout: 20000 },
-  );
+      { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true },
+    );
 
-  const payData = payRes.data as Record<string, unknown>;
-  const payStatus = ((payData.status ?? tx.status ?? 'pending') as string).toLowerCase();
-  console.log('[FedaPay Mobile] Paiement initié, statut:', payStatus);
+    if (payRes.status < 400) {
+      ussdInitiated = true;
+      console.log('[FedaPay Mobile] USSD initié, statut HTTP:', payRes.status);
+    } else {
+      console.log('[FedaPay Mobile] /pay non disponible (sandbox?):', payRes.status,
+        JSON.stringify(payRes.data).slice(0, 150));
+    }
+  } catch (e) {
+    console.log('[FedaPay Mobile] /pay exception (sandbox?):', String(e).slice(0, 100));
+  }
 
-  // 3. Sauvegarder en DB (statut pending — sera mis à jour par le webhook)
+  // 3. Sauvegarder en DB
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
     where:  { userId },
@@ -301,12 +308,27 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
     create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
   });
 
+  if (ussdInitiated) {
+    // Production : prompt USSD envoyé sur le téléphone
+    return {
+      transactionId: txId,
+      status:        'pending',
+      message:       'Confirmez le paiement sur votre téléphone (prompt USSD)',
+      plan,
+      amount:        planInfo.amount,
+    };
+  }
+
+  // Sandbox (ou clés live non encore activées) : retourner l'URL de checkout FedaPay
+  const checkoutUrl = `${env.API_URL}/payment?txId=${txId}&plan=${plan}&amount=${planInfo.amount}`;
+  console.log('[FedaPay Mobile] Fallback checkout URL:', checkoutUrl);
   return {
     transactionId: txId,
-    status:        payStatus,
-    message:       'Confirmez le paiement sur votre téléphone (prompt USSD)',
+    status:        'pending',
+    message:       'Ouvrez le lien pour finaliser le paiement Mobile Money',
     plan,
     amount:        planInfo.amount,
+    checkoutUrl,
   };
 }
 
