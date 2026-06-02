@@ -78,7 +78,14 @@ async function sendFirestorePushNotification(fcmToken, title, body, data) {
             token: fcmToken,
             notification: { title, body },
             data,
-            android: { priority: 'high' },
+            android: {
+                priority: 'high',
+                notification: {
+                    channelId: 'affinity_notifications',
+                    sound: 'default',
+                    clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+                },
+            },
             apns: { payload: { aps: { sound: 'default' } } },
         });
     }
