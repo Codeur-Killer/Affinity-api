@@ -51,9 +51,28 @@ async function bootstrap() {
     };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+    // ── Keep-alive : ping Neon toutes les 4 min pour éviter la déconnexion ──────
+    // Neon suspend les connexions après ~5 min d'inactivité.
+    setInterval(async () => {
+        try {
+            await prisma_1.prisma.$queryRaw `SELECT 1`;
+        }
+        catch (e) {
+            console.warn('[DB] Keep-alive échoué, reconnexion en cours...', String(e).slice(0, 80));
+        }
+    }, 4 * 60 * 1000);
 }
 bootstrap().catch((err) => {
     console.error('❌ Erreur au démarrage:', err);
     process.exit(1);
+});
+// ── Protection globale contre les crashes ──────────────────────────────────────
+// Neon peut émettre des erreurs de connexion en dehors des requêtes actives.
+// Sans ces handlers, Node.js s'arrête et Render redémarre le serveur.
+process.on('uncaughtException', (err) => {
+    console.error('[ERREUR NON GÉRÉE]', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[REJET NON GÉRÉ]', String(reason).slice(0, 200));
 });
 //# sourceMappingURL=index.js.map
