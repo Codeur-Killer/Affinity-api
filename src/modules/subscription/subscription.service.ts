@@ -20,11 +20,16 @@ export interface CheckoutResult {
 
 const isSandbox = env.FEDAPAY_SECRET_KEY.startsWith('sk_sandbox_');
 
-// Log de debug au démarrage pour vérifier la clé (masquée)
+// URL auto-détectée d'après la clé — plus besoin de changer FEDAPAY_BASE_URL manuellement
+const FEDAPAY_BASE_URL = isSandbox
+  ? 'https://sandbox-api.fedapay.com'
+  : 'https://api.fedapay.com';
+
+// Log de debug au démarrage
 const _keyPreview = env.FEDAPAY_SECRET_KEY.length > 8
   ? `${env.FEDAPAY_SECRET_KEY.slice(0, 12)}...${env.FEDAPAY_SECRET_KEY.slice(-4)}`
   : '(VIDE ou trop courte)';
-console.log(`[FedaPay] Clé configurée : ${_keyPreview} | Sandbox: ${isSandbox} | URL: ${env.FEDAPAY_BASE_URL}`);
+console.log(`[FedaPay] Clé : ${_keyPreview} | Mode: ${isSandbox ? 'SANDBOX' : '🟢 LIVE'} | URL: ${FEDAPAY_BASE_URL}`);
 
 const fedapayHeaders = () => ({
   Authorization: `Bearer ${env.FEDAPAY_SECRET_KEY.trim()}`, // trim() au cas où espaces parasites
@@ -78,7 +83,7 @@ export async function createCheckout(
   let txId: string | number;
   try {
     const res = await axios.post(
-      `${env.FEDAPAY_BASE_URL}/v1/transactions`,
+      `${FEDAPAY_BASE_URL}/v1/transactions`,
       {
         description: `Abonnement Affinity ${planInfo.label}`,
         amount:      planInfo.amount,
@@ -125,7 +130,7 @@ export async function createCheckout(
       console.error(`[FedaPay] Erreur création: HTTP ${status} – ${body}`);
       if (status === 401) {
         throw new Error(
-          `Clé FedaPay invalide (401). URL: ${env.FEDAPAY_BASE_URL}. ` +
+          `Clé FedaPay invalide (401). URL: ${FEDAPAY_BASE_URL}. ` +
           'Vérifiez FEDAPAY_SECRET_KEY sur app.fedapay.com → Paramètres → Clés API',
         );
       }
@@ -138,7 +143,7 @@ export async function createCheckout(
   let paymentUrl: string;
   try {
     const tokenRes = await axios.post(
-      `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/token`,
+      `${FEDAPAY_BASE_URL}/v1/transactions/${txId}/token`,
       {},
       { headers: fedapayHeaders(), timeout: 15000 },
     );
@@ -212,7 +217,7 @@ export async function handleWebhook(payload: Record<string, unknown>): Promise<v
 
 export async function verifyTransaction(txId: string): Promise<{ status: string; approved: boolean }> {
   const res = await axios.get(
-    `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}`,
+    `${FEDAPAY_BASE_URL}/v1/transactions/${txId}`,
     { headers: fedapayHeaders(), timeout: 10000 },
   );
   const tx     = parseTx(res.data);
@@ -254,7 +259,7 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
 
   // 1. Créer la transaction FedaPay
   const txRes = await axios.post(
-    `${env.FEDAPAY_BASE_URL}/v1/transactions`,
+    `${FEDAPAY_BASE_URL}/v1/transactions`,
     {
       description: `Abonnement Affinity ${planInfo.label}`,
       amount:      planInfo.amount,
@@ -281,7 +286,7 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
   let ussdInitiated = false;
   try {
     const payRes = await axios.post(
-      `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`,
+      `${FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`,
       {
         payment_method: network,
         phone_number:   { number: normalizedPhone, country: 'TG' },

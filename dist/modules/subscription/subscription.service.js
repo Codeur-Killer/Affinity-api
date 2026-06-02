@@ -48,11 +48,15 @@ const PLANS = {
     PREMIUM: { label: 'Premium', amount: 25000, durationDays: 30 },
 };
 const isSandbox = env_1.env.FEDAPAY_SECRET_KEY.startsWith('sk_sandbox_');
-// Log de debug au démarrage pour vérifier la clé (masquée)
+// URL auto-détectée d'après la clé — plus besoin de changer FEDAPAY_BASE_URL manuellement
+const FEDAPAY_BASE_URL = isSandbox
+    ? 'https://sandbox-api.fedapay.com'
+    : 'https://api.fedapay.com';
+// Log de debug au démarrage
 const _keyPreview = env_1.env.FEDAPAY_SECRET_KEY.length > 8
     ? `${env_1.env.FEDAPAY_SECRET_KEY.slice(0, 12)}...${env_1.env.FEDAPAY_SECRET_KEY.slice(-4)}`
     : '(VIDE ou trop courte)';
-console.log(`[FedaPay] Clé configurée : ${_keyPreview} | Sandbox: ${isSandbox} | URL: ${env_1.env.FEDAPAY_BASE_URL}`);
+console.log(`[FedaPay] Clé : ${_keyPreview} | Mode: ${isSandbox ? 'SANDBOX' : '🟢 LIVE'} | URL: ${FEDAPAY_BASE_URL}`);
 const fedapayHeaders = () => ({
     Authorization: `Bearer ${env_1.env.FEDAPAY_SECRET_KEY.trim()}`, // trim() au cas où espaces parasites
     'Content-Type': 'application/json',
@@ -99,7 +103,7 @@ async function createCheckout(userId, plan, customer) {
     // 1. Créer la transaction
     let txId;
     try {
-        const res = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions`, {
+        const res = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions`, {
             description: `Abonnement Affinity ${planInfo.label}`,
             amount: planInfo.amount,
             currency: { iso: 'XOF' },
@@ -140,7 +144,7 @@ async function createCheckout(userId, plan, customer) {
             const body = JSON.stringify(e.response?.data ?? e.message);
             console.error(`[FedaPay] Erreur création: HTTP ${status} – ${body}`);
             if (status === 401) {
-                throw new Error(`Clé FedaPay invalide (401). URL: ${env_1.env.FEDAPAY_BASE_URL}. ` +
+                throw new Error(`Clé FedaPay invalide (401). URL: ${FEDAPAY_BASE_URL}. ` +
                     'Vérifiez FEDAPAY_SECRET_KEY sur app.fedapay.com → Paramètres → Clés API');
             }
             throw new Error(`FedaPay erreur ${status}: ${body}`);
@@ -150,7 +154,7 @@ async function createCheckout(userId, plan, customer) {
     // 2. Fallback : appeler /token si payment_url n'était pas dans la réponse
     let paymentUrl;
     try {
-        const tokenRes = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/token`, {}, { headers: fedapayHeaders(), timeout: 15000 });
+        const tokenRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}/token`, {}, { headers: fedapayHeaders(), timeout: 15000 });
         const td = tokenRes.data;
         const url = (td.payment_url ?? td.url ?? td.v1?.url);
         const token = (td.payment_token ?? td.token ?? td.v1?.token);
@@ -211,7 +215,7 @@ async function handleWebhook(payload) {
     });
 }
 async function verifyTransaction(txId) {
-    const res = await axios_1.default.get(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions/${txId}`, { headers: fedapayHeaders(), timeout: 10000 });
+    const res = await axios_1.default.get(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}`, { headers: fedapayHeaders(), timeout: 10000 });
     const tx = parseTx(res.data);
     const status = (tx?.status ?? 'unknown').toLowerCase();
     return { status, approved: status === 'approved' || status === 'transferred' };
@@ -225,7 +229,7 @@ async function payMobileMoney(input) {
     // Normaliser le numéro (enlever le +228 si présent → FedaPay attend juste les chiffres)
     const normalizedPhone = phone.replace(/^\+228/, '').replace(/\D/g, '');
     // 1. Créer la transaction FedaPay
-    const txRes = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions`, {
+    const txRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions`, {
         description: `Abonnement Affinity ${planInfo.label}`,
         amount: planInfo.amount,
         currency: { iso: 'XOF' },
@@ -246,7 +250,7 @@ async function payMobileMoney(input) {
     // 2. Tenter l'initiation USSD directe (fonctionne avec les clés live, pas sandbox)
     let ussdInitiated = false;
     try {
-        const payRes = await axios_1.default.post(`${env_1.env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`, {
+        const payRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`, {
             payment_method: network,
             phone_number: { number: normalizedPhone, country: 'TG' },
         }, { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true });
