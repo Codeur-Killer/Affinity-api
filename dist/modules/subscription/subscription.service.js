@@ -241,7 +241,14 @@ async function payMobileMoney(input) {
         },
         callback_url: callbackUrl,
         additional_details: `userId=${userId}&plan=${plan}`,
-    }, { headers: fedapayHeaders(), timeout: 20000 });
+    }, { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true });
+    // Log complet pour debug
+    console.log('[FedaPay Mobile] Création transaction — statut:', txRes.status, '| réponse:', JSON.stringify(txRes.data).slice(0, 300));
+    if (txRes.status >= 400) {
+        const fedaMsg = txRes.data?.message
+            ?? JSON.stringify(txRes.data).slice(0, 200);
+        throw new Error(`FedaPay erreur ${txRes.status} : ${fedaMsg}`);
+    }
     const tx = parseTx(txRes.data);
     if (!tx?.id)
         throw new Error('FedaPay : aucun ID de transaction reçu');
