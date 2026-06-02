@@ -21,6 +21,7 @@ const app = express();
 
 // Render (et autres PaaS) utilisent un reverse proxy — on lui fait confiance
 // pour que express-rate-limit puisse lire correctement X-Forwarded-For
+// trust proxy � Render reverse proxy support
 app.set('trust proxy', 1);
 
 // ─── Sécurité ──────────────────────────────────────────
