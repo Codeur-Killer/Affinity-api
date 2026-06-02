@@ -219,3 +219,118 @@ export async function verifyTransaction(txId: string): Promise<{ status: string;
   const status = ((tx?.status as string) ?? 'unknown').toLowerCase();
   return { status, approved: status === 'approved' || status === 'transferred' };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// PAIEMENT MOBILE MONEY DIRECT (T-Money, Flooz)
+// L'utilisateur reçoit un prompt USSD sur son téléphone — pas de redirection web.
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface MobilePayInput {
+  userId:    string;
+  plan:      Plan;
+  phone:     string;   // ex: '+22890000000' ou '90000000'
+  network:   string;   // 'tm_money' | 'flooz' | 'mtn'
+  customer:  { email: string; firstname: string; lastname: string };
+}
+
+export interface MobilePayResult {
+  transactionId: string | number;
+  status:        string;
+  message:       string;
+  plan:          Plan;
+  amount:        number;
+}
+
+export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayResult> {
+  const { userId, plan, phone, network, customer } = input;
+  const planInfo = PLANS[plan];
+  if (!planInfo) throw new Error('Plan invalide');
+
+  const callbackUrl = `${env.API_URL}/api/subscription/webhook`;
+
+  // Normaliser le numéro (enlever le +228 si présent → FedaPay attend juste les chiffres)
+  const normalizedPhone = phone.replace(/^\+228/, '').replace(/\D/g, '');
+
+  // 1. Créer la transaction FedaPay
+  const txRes = await axios.post(
+    `${env.FEDAPAY_BASE_URL}/v1/transactions`,
+    {
+      description: `Abonnement Affinity ${planInfo.label}`,
+      amount:      planInfo.amount,
+      currency:    { iso: 'XOF' },
+      customer: {
+        email:        customer.email,
+        firstname:    customer.firstname,
+        lastname:     customer.lastname,
+        phone_number: { number: normalizedPhone, country: 'TG' },
+      },
+      callback_url:       callbackUrl,
+      additional_details: `userId=${userId}&plan=${plan}`,
+    },
+    { headers: fedapayHeaders(), timeout: 20000 },
+  );
+
+  const tx = parseTx(txRes.data);
+  if (!tx?.id) throw new Error('FedaPay : aucun ID de transaction reçu');
+
+  const txId = tx.id as string | number;
+  console.log('[FedaPay Mobile] Transaction créée:', txId);
+
+  // 2. Initier le paiement Mobile Money directement
+  const payRes = await axios.post(
+    `${env.FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`,
+    {
+      payment_method: network,      // 'tm_money' | 'flooz' | 'mtn'
+      phone_number: {
+        number:  normalizedPhone,
+        country: 'TG',
+      },
+    },
+    { headers: fedapayHeaders(), timeout: 20000 },
+  );
+
+  const payData = payRes.data as Record<string, unknown>;
+  const payStatus = ((payData.status ?? tx.status ?? 'pending') as string).toLowerCase();
+  console.log('[FedaPay Mobile] Paiement initié, statut:', payStatus);
+
+  // 3. Sauvegarder en DB (statut pending — sera mis à jour par le webhook)
+  const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
+  await prisma.subscription.upsert({
+    where:  { userId },
+    update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
+    create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
+  });
+
+  return {
+    transactionId: txId,
+    status:        payStatus,
+    message:       'Confirmez le paiement sur votre téléphone (prompt USSD)',
+    plan,
+    amount:        planInfo.amount,
+  };
+}
+
+// Vérifier le statut d'un paiement mobile money (polling depuis Flutter)
+export async function checkMobilePayStatus(userId: string): Promise<{
+  status:   string;
+  approved: boolean;
+  plan?:    Plan;
+}> {
+  const sub = await prisma.subscription.findUnique({ where: { userId } });
+  if (!sub?.fedapayTxId) return { status: 'not_found', approved: false };
+
+  try {
+    const { status, approved } = await verifyTransaction(sub.fedapayTxId);
+
+    if (approved && sub.fedapayStatus !== 'approved') {
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data:  { fedapayStatus: 'approved',
+                 expiresAt: new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000) },
+      });
+    }
+    return { status, approved, plan: sub.plan };
+  } catch {
+    return { status: sub.fedapayStatus ?? 'pending', approved: false, plan: sub.plan };
+  }
+}
