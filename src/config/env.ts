@@ -18,9 +18,9 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string(),
   FIREBASE_PRIVATE_KEY: z.string(),
 
-  FEDAPAY_PUBLIC_KEY: z.string().min(1),
-  FEDAPAY_SECRET_KEY: z.string().min(20, 'Clé FedaPay trop courte — vérifiez sur app.fedapay.com'),
-  FEDAPAY_BASE_URL:   z.string().default('https://sandbox-api.fedapay.com'),
+  CINETPAY_API_KEY:    z.string().min(1),
+  CINETPAY_SECRET_KEY: z.string().min(1),
+  CINETPAY_SITE_ID:    z.string().min(1),
 
   PLAN_PRICE_DECOUVERTE: z.string().default('5000'),
   PLAN_PRICE_STANDARD:   z.string().default('15000'),
