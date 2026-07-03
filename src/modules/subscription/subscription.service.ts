@@ -4,9 +4,9 @@ import { env } from '../../config/env';
 import { Subscription, Plan } from '@prisma/client';
 
 const PLANS: Record<Plan, { label: string; amount: number; durationDays: number }> = {
-  DECOUVERTE: { label: 'Découverte', amount: 5000,  durationDays: 30 },
-  STANDARD:   { label: 'Standard',   amount: 15000, durationDays: 30 },
-  PREMIUM:    { label: 'Premium',    amount: 25000, durationDays: 30 },
+  DECOUVERTE: { label: 'Découverte', amount: env.PLAN_PRICE_DECOUVERTE, durationDays: 30 },
+  STANDARD:   { label: 'Standard',   amount: env.PLAN_PRICE_STANDARD,   durationDays: 30 },
+  PREMIUM:    { label: 'Premium',    amount: env.PLAN_PRICE_PREMIUM,     durationDays: 30 },
 };
 
 interface FedaPayCustomer { email: string; firstname: string; lastname: string; }

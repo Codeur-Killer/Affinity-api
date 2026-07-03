@@ -12,6 +12,7 @@ import {
 import { getAccessStatus } from './plan-limits';
 import { ok, badRequest, forbidden, serverError } from '../../utils/response';
 import { prisma } from '../../config/prisma';
+import { env } from '../../config/env';
 
 const VALID_PLANS: Plan[] = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
 
@@ -138,4 +139,14 @@ export async function webhook(req: Request, res: Response): Promise<void> {
 export async function verifyTx(req: Request, res: Response): Promise<void> {
   try { ok(res, await verifyTransaction(req.params.txId)); }
   catch { serverError(res); }
+}
+
+export function getPlans(_req: Request, res: Response): void {
+  ok(res, {
+    plans: [
+      { key: 'DECOUVERTE', label: 'Découverte', amount: env.PLAN_PRICE_DECOUVERTE, currency: 'FCFA', durationDays: 30 },
+      { key: 'STANDARD',   label: 'Standard',   amount: env.PLAN_PRICE_STANDARD,   currency: 'FCFA', durationDays: 30 },
+      { key: 'PREMIUM',    label: 'Premium',    amount: env.PLAN_PRICE_PREMIUM,     currency: 'FCFA', durationDays: 30 },
+    ],
+  });
 }

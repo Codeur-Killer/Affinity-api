@@ -7,10 +7,12 @@ exports.mobilePay = mobilePay;
 exports.mobilePayStatus = mobilePayStatus;
 exports.webhook = webhook;
 exports.verifyTx = verifyTx;
+exports.getPlans = getPlans;
 const subscription_service_1 = require("./subscription.service");
 const plan_limits_1 = require("./plan-limits");
 const response_1 = require("../../utils/response");
 const prisma_1 = require("../../config/prisma");
+const env_1 = require("../../config/env");
 const VALID_PLANS = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
 async function getSubscription(req, res) {
     try {
@@ -142,5 +144,14 @@ async function verifyTx(req, res) {
     catch {
         (0, response_1.serverError)(res);
     }
+}
+function getPlans(_req, res) {
+    (0, response_1.ok)(res, {
+        plans: [
+            { key: 'DECOUVERTE', label: 'Découverte', amount: env_1.env.PLAN_PRICE_DECOUVERTE, currency: 'FCFA', durationDays: 30 },
+            { key: 'STANDARD', label: 'Standard', amount: env_1.env.PLAN_PRICE_STANDARD, currency: 'FCFA', durationDays: 30 },
+            { key: 'PREMIUM', label: 'Premium', amount: env_1.env.PLAN_PRICE_PREMIUM, currency: 'FCFA', durationDays: 30 },
+        ],
+    });
 }
 //# sourceMappingURL=subscription.controller.js.map

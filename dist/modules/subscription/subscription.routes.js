@@ -6,6 +6,7 @@ const auth_middleware_1 = require("../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Webhook FedaPay — sans auth JWT
 router.post('/webhook', subscription_controller_1.webhook);
+router.get('/plans', subscription_controller_1.getPlans); // public — sans auth
 router.use(auth_middleware_1.authenticate);
 router.get('/', subscription_controller_1.getSubscription);
 router.post('/checkout', subscription_controller_1.checkout); // checkout web (fallback)

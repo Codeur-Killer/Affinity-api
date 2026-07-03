@@ -7,6 +7,7 @@ import {
   webhook,
   verifyTx,
   boost,
+  getPlans,
 } from './subscription.controller';
 import { authenticate } from '../../middleware/auth.middleware';
 
@@ -14,6 +15,8 @@ const router = Router();
 
 // Webhook FedaPay — sans auth JWT
 router.post('/webhook', webhook);
+
+router.get('/plans', getPlans); // public — sans auth
 
 router.use(authenticate);
 

@@ -22,6 +22,10 @@ const envSchema = z.object({
   FEDAPAY_SECRET_KEY: z.string().min(20, 'Clé FedaPay trop courte — vérifiez sur app.fedapay.com'),
   FEDAPAY_BASE_URL:   z.string().default('https://sandbox-api.fedapay.com'),
 
+  PLAN_PRICE_DECOUVERTE: z.string().default('5000'),
+  PLAN_PRICE_STANDARD:   z.string().default('15000'),
+  PLAN_PRICE_PREMIUM:    z.string().default('25000'),
+
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE_MB: z.string().default('10'),
 
@@ -47,6 +51,9 @@ export const env = {
   ...parsed.data,
   PORT: parseInt(parsed.data.PORT, 10),
   MAX_FILE_SIZE_BYTES: parseInt(parsed.data.MAX_FILE_SIZE_MB, 10) * 1024 * 1024,
+  PLAN_PRICE_DECOUVERTE: parseInt(parsed.data.PLAN_PRICE_DECOUVERTE, 10),
+  PLAN_PRICE_STANDARD:   parseInt(parsed.data.PLAN_PRICE_STANDARD,   10),
+  PLAN_PRICE_PREMIUM:    parseInt(parsed.data.PLAN_PRICE_PREMIUM,     10),
   IS_PROD: parsed.data.NODE_ENV === 'production',
   IS_DEV: parsed.data.NODE_ENV === 'development',
 };

@@ -44,9 +44,9 @@ const axios_1 = __importStar(require("axios"));
 const prisma_1 = require("../../config/prisma");
 const env_1 = require("../../config/env");
 const PLANS = {
-    DECOUVERTE: { label: 'Découverte', amount: 5000, durationDays: 30 },
-    STANDARD: { label: 'Standard', amount: 15000, durationDays: 30 },
-    PREMIUM: { label: 'Premium', amount: 25000, durationDays: 30 },
+    DECOUVERTE: { label: 'Découverte', amount: env_1.env.PLAN_PRICE_DECOUVERTE, durationDays: 30 },
+    STANDARD: { label: 'Standard', amount: env_1.env.PLAN_PRICE_STANDARD, durationDays: 30 },
+    PREMIUM: { label: 'Premium', amount: env_1.env.PLAN_PRICE_PREMIUM, durationDays: 30 },
 };
 const isSandbox = env_1.env.FEDAPAY_SECRET_KEY.startsWith('sk_sandbox_');
 // URL auto-détectée d'après la clé — plus besoin de changer FEDAPAY_BASE_URL manuellement
