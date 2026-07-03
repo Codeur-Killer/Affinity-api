@@ -141,6 +141,20 @@ export async function verifyTx(req: Request, res: Response): Promise<void> {
   catch { serverError(res); }
 }
 
+// ── Confirmation simulée (sandbox / dev uniquement) ──────────────────────────
+export async function devConfirm(req: Request, res: Response): Promise<void> {
+  if (env.IS_PROD) { forbidden(res, 'Non disponible en production'); return; }
+  try {
+    const sub = await prisma.subscription.findUnique({ where: { userId: req.user!.id } });
+    if (!sub) { badRequest(res, 'Aucun abonnement en attente'); return; }
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data:  { fedapayStatus: 'approved', expiresAt: new Date(Date.now() + 30 * 86400000) },
+    });
+    ok(res, { approved: true }, 'Paiement simulé avec succès');
+  } catch { serverError(res); }
+}
+
 export function getPlans(_req: Request, res: Response): void {
   ok(res, {
     plans: [

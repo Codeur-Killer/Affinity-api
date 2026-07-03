@@ -8,6 +8,7 @@ import {
   verifyTx,
   boost,
   getPlans,
+  devConfirm,
 } from './subscription.controller';
 import { authenticate } from '../../middleware/auth.middleware';
 
@@ -25,6 +26,7 @@ router.post('/checkout',      checkout);         // checkout web (fallback)
 router.post('/mobile-pay',    mobilePay);        // paiement Mobile Money direct
 router.get('/mobile-status',  mobilePayStatus);  // polling statut
 router.get('/verify/:txId',   verifyTx);
-router.post('/boost',         boost);
+router.post('/boost',        boost);
+router.post('/dev-confirm',  devConfirm); // sandbox/dev uniquement — bloqué en production
 
 export default router;
