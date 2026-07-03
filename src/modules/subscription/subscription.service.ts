@@ -67,6 +67,14 @@ export async function getCurrentSubscription(userId: string): Promise<Subscripti
   return prisma.subscription.findUnique({ where: { userId } });
 }
 
+const BOOST_DURATION_MS = 3 * 60 * 60 * 1000; // 3 heures
+
+export async function activateBoost(userId: string): Promise<{ activeUntil: Date }> {
+  const expiresAt = new Date(Date.now() + BOOST_DURATION_MS);
+  await prisma.boost.create({ data: { userId, expiresAt } });
+  return { activeUntil: expiresAt };
+}
+
 export async function createCheckout(
   userId: string,
   plan: Plan,

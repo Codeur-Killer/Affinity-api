@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { Profile } from '@prisma/client';
 import { CreateProfileInput, UpdateProfileInput } from './profile.schemas';
+import { getAccessStatus } from '../subscription/plan-limits';
 
 const MAX_PHOTOS = 5;
 
@@ -38,6 +39,13 @@ export async function updateProfile(
   userId: string,
   data: UpdateProfileInput,
 ): Promise<Profile> {
+  let incognito: boolean | undefined;
+  if (data.incognito !== undefined) {
+    const access = await getAccessStatus(userId);
+    // Le plan Découverte ne débloque pas le mode Incognito : on ignore la valeur envoyée.
+    incognito = access.limits.canUseIncognito ? data.incognito : false;
+  }
+
   return prisma.profile.update({
     where: { userId },
     data: {
@@ -52,6 +60,7 @@ export async function updateProfile(
       ...(data.latitude !== undefined && { latitude: data.latitude }),
       ...(data.longitude !== undefined && { longitude: data.longitude }),
       ...(data.city !== undefined && { city: data.city }),
+      ...(incognito !== undefined && { incognito }),
       lastSeenAt: new Date(),
     },
   });

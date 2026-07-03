@@ -15,7 +15,9 @@ exports.createProfileSchema = zod_1.z.object({
     longitude: zod_1.z.number().optional(),
     city: zod_1.z.string().max(100).optional(),
 });
-exports.updateProfileSchema = exports.createProfileSchema.partial();
+exports.updateProfileSchema = exports.createProfileSchema.partial().extend({
+    incognito: zod_1.z.boolean().optional(),
+});
 exports.locationSchema = zod_1.z.object({
     latitude: zod_1.z.number().min(-90).max(90),
     longitude: zod_1.z.number().min(-180).max(180),

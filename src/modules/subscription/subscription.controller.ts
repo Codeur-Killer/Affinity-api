@@ -7,17 +7,44 @@ import {
   verifyTransaction,
   payMobileMoney,
   checkMobilePayStatus,
+  activateBoost,
 } from './subscription.service';
-import { ok, badRequest, serverError } from '../../utils/response';
+import { getAccessStatus } from './plan-limits';
+import { ok, badRequest, forbidden, serverError } from '../../utils/response';
 import { prisma } from '../../config/prisma';
 
 const VALID_PLANS: Plan[] = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
 
 export async function getSubscription(req: Request, res: Response): Promise<void> {
   try {
-    const sub      = await getCurrentSubscription(req.user!.id);
-    const isActive = sub ? sub.expiresAt > new Date() && sub.fedapayStatus === 'approved' : false;
-    ok(res, { subscription: sub, isActive });
+    const sub    = await getCurrentSubscription(req.user!.id);
+    const access = await getAccessStatus(req.user!.id);
+    ok(res, {
+      subscription: sub,
+      isActive:     access.isActive,
+      plan:         access.plan,
+      isVerified:   access.isVerified,
+      canSwipe:     access.canSwipe,
+      limits:       access.limits,
+      usage:        access.usage,
+    });
+  } catch { serverError(res); }
+}
+
+export async function boost(req: Request, res: Response): Promise<void> {
+  try {
+    const access = await getAccessStatus(req.user!.id);
+    if (!access.isActive) {
+      forbidden(res, 'Un abonnement actif est requis pour utiliser un boost');
+      return;
+    }
+    const { boostsPerMonth } = access.limits;
+    if (boostsPerMonth !== null && access.usage.boostsThisMonth >= boostsPerMonth) {
+      forbidden(res, 'Limite de boosts mensuels atteinte pour votre plan');
+      return;
+    }
+    const result = await activateBoost(req.user!.id);
+    ok(res, result, 'Boost activé pour 3 heures');
   } catch { serverError(res); }
 }
 

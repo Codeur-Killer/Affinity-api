@@ -12,5 +12,6 @@ router.post('/checkout', subscription_controller_1.checkout); // checkout web (f
 router.post('/mobile-pay', subscription_controller_1.mobilePay); // paiement Mobile Money direct
 router.get('/mobile-status', subscription_controller_1.mobilePayStatus); // polling statut
 router.get('/verify/:txId', subscription_controller_1.verifyTx);
+router.post('/boost', subscription_controller_1.boost);
 exports.default = router;
 //# sourceMappingURL=subscription.routes.js.map

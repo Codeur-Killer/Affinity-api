@@ -1,20 +1,49 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSubscription = getSubscription;
+exports.boost = boost;
 exports.checkout = checkout;
 exports.mobilePay = mobilePay;
 exports.mobilePayStatus = mobilePayStatus;
 exports.webhook = webhook;
 exports.verifyTx = verifyTx;
 const subscription_service_1 = require("./subscription.service");
+const plan_limits_1 = require("./plan-limits");
 const response_1 = require("../../utils/response");
 const prisma_1 = require("../../config/prisma");
 const VALID_PLANS = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
 async function getSubscription(req, res) {
     try {
         const sub = await (0, subscription_service_1.getCurrentSubscription)(req.user.id);
-        const isActive = sub ? sub.expiresAt > new Date() && sub.fedapayStatus === 'approved' : false;
-        (0, response_1.ok)(res, { subscription: sub, isActive });
+        const access = await (0, plan_limits_1.getAccessStatus)(req.user.id);
+        (0, response_1.ok)(res, {
+            subscription: sub,
+            isActive: access.isActive,
+            plan: access.plan,
+            isVerified: access.isVerified,
+            canSwipe: access.canSwipe,
+            limits: access.limits,
+            usage: access.usage,
+        });
+    }
+    catch {
+        (0, response_1.serverError)(res);
+    }
+}
+async function boost(req, res) {
+    try {
+        const access = await (0, plan_limits_1.getAccessStatus)(req.user.id);
+        if (!access.isActive) {
+            (0, response_1.forbidden)(res, 'Un abonnement actif est requis pour utiliser un boost');
+            return;
+        }
+        const { boostsPerMonth } = access.limits;
+        if (boostsPerMonth !== null && access.usage.boostsThisMonth >= boostsPerMonth) {
+            (0, response_1.forbidden)(res, 'Limite de boosts mensuels atteinte pour votre plan');
+            return;
+        }
+        const result = await (0, subscription_service_1.activateBoost)(req.user.id);
+        (0, response_1.ok)(res, result, 'Boost activé pour 3 heures');
     }
     catch {
         (0, response_1.serverError)(res);

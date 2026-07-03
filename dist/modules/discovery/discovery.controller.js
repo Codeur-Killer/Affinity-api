@@ -5,15 +5,21 @@ exports.receivedLikes = receivedLikes;
 exports.like = like;
 exports.pass = pass;
 const discovery_service_1 = require("./discovery.service");
+const plan_limits_1 = require("../subscription/plan-limits");
 const response_1 = require("../../utils/response");
 async function candidates(req, res) {
     try {
+        const access = await (0, plan_limits_1.getAccessStatus)(req.user.id);
         const reset = req.query.reset === 'true';
         const gender = req.query.gender;
-        const minAge = req.query.minAge ? Number(req.query.minAge) : undefined;
-        const maxAge = req.query.maxAge ? Number(req.query.maxAge) : undefined;
         const maxDistance = req.query.maxDistance ? Number(req.query.maxDistance) : undefined;
-        const neighborhood = req.query.neighborhood;
+        // Filtres avancés réservés aux plans Standard/Premium
+        const minAge = access.limits.advancedFilters && req.query.minAge
+            ? Number(req.query.minAge) : undefined;
+        const maxAge = access.limits.advancedFilters && req.query.maxAge
+            ? Number(req.query.maxAge) : undefined;
+        const neighborhood = access.limits.advancedFilters
+            ? req.query.neighborhood : undefined;
         const profiles = await (0, discovery_service_1.getCandidates)(req.user.id, {
             reset, gender, minAge, maxAge, maxDistance, neighborhood,
         });
@@ -34,7 +40,8 @@ async function receivedLikes(req, res) {
 }
 async function like(req, res) {
     try {
-        const result = await (0, discovery_service_1.likeUser)(req.user.id, req.params.userId);
+        const isSuperLike = req.body?.isSuperLike === true;
+        const result = await (0, discovery_service_1.likeUser)(req.user.id, req.params.userId, isSuperLike);
         (0, response_1.ok)(res, result, result.isMatch ? 'C\'est un match !' : 'Like envoyé');
     }
     catch (err) {
@@ -46,8 +53,8 @@ async function pass(req, res) {
         await (0, discovery_service_1.passUser)(req.user.id, req.params.userId);
         (0, response_1.ok)(res, null, 'Profil passé');
     }
-    catch {
-        (0, response_1.serverError)(res);
+    catch (err) {
+        (0, response_1.badRequest)(res, err instanceof Error ? err.message : 'Erreur');
     }
 }
 //# sourceMappingURL=discovery.controller.js.map

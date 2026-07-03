@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCurrentSubscription = getCurrentSubscription;
+exports.activateBoost = activateBoost;
 exports.createCheckout = createCheckout;
 exports.handleWebhook = handleWebhook;
 exports.verifyTransaction = verifyTransaction;
@@ -92,6 +93,12 @@ function buildCheckoutUrl(tokenOrId) {
 // ── PUBLIC API ─────────────────────────────────────────────────────────────────
 async function getCurrentSubscription(userId) {
     return prisma_1.prisma.subscription.findUnique({ where: { userId } });
+}
+const BOOST_DURATION_MS = 3 * 60 * 60 * 1000; // 3 heures
+async function activateBoost(userId) {
+    const expiresAt = new Date(Date.now() + BOOST_DURATION_MS);
+    await prisma_1.prisma.boost.create({ data: { userId, expiresAt } });
+    return { activeUntil: expiresAt };
 }
 async function createCheckout(userId, plan, customer) {
     const planInfo = PLANS[plan];

@@ -4,6 +4,7 @@ import {
   createFirestoreConversation,
   sendFirestorePushNotification,
 } from '../../utils/firestore';
+import { getAccessStatus } from '../subscription/plan-limits';
 
 const CANDIDATES_LIMIT = 20;
 
@@ -49,10 +50,14 @@ export async function getCandidates(
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [alreadyLiked, alreadyPassed, blocked] = await Promise.all([
+  const [alreadyLiked, receivedLikes, alreadyPassed, blocked] = await Promise.all([
     prisma.like.findMany({
       where:  { senderId: userId },
       select: { receiverId: true },
+    }),
+    prisma.like.findMany({
+      where:  { receiverId: userId },
+      select: { senderId: true },
     }),
     filters.reset
       ? Promise.resolve([])
@@ -72,6 +77,7 @@ export async function getCandidates(
     ...alreadyPassed.map((p) => p.passedId),
     ...blocked.flatMap((b) => [b.blockerId, b.blockedId]),
   ]);
+  const likedMeIds = new Set(receivedLikes.map((l) => l.senderId));
 
   const genderPref = filters.gender ?? settings?.genderPreference;
   const genderFilter =
@@ -83,13 +89,37 @@ export async function getCandidates(
     where: {
       userId:     { notIn: Array.from(excludedIds) },
       isActive:   true,
+      incognito:  false,
       lastSeenAt: { gte: thirtyDaysAgo },
       ...genderFilter,
     },
     take: CANDIDATES_LIMIT * 3,
   });
 
+  // ── Profils secrets (Premium) : invisibles sauf s'ils m'ont déjà liké ───────
+  const candidateIds = candidates.map((c) => c.userId);
+  const [premiumSubs, activeBoosts] = await Promise.all([
+    prisma.subscription.findMany({
+      where: {
+        userId:        { in: candidateIds },
+        plan:          'PREMIUM',
+        fedapayStatus: 'approved',
+        expiresAt:     { gt: new Date() },
+      },
+      select: { userId: true },
+    }),
+    prisma.boost.findMany({
+      where: { userId: { in: candidateIds }, expiresAt: { gt: new Date() } },
+      select: { userId: true },
+    }),
+  ]);
+  const secretProfileIds = new Set(
+    premiumSubs.map((s) => s.userId).filter((id) => !likedMeIds.has(id)),
+  );
+  const boostedIds = new Set(activeBoosts.map((b) => b.userId));
+
   return candidates
+    .filter((c) => !secretProfileIds.has(c.userId))
     .map((c) => {
       let score = 0;
 
@@ -113,6 +143,7 @@ export async function getCandidates(
       if (myProfile.relationshipGoal === c.relationshipGoal) score += 20;
       const days = (Date.now() - c.lastSeenAt.getTime()) / 86400000;
       score += Math.max(0, (30 - days) / 30) * 10;
+      if (boostedIds.has(c.userId)) score += 1000;
 
       return { profile: c, score };
     })
@@ -173,11 +204,30 @@ export interface LikeResult {
 }
 
 export async function likeUser(
-  senderId:   string,
-  receiverId: string,
+  senderId:    string,
+  receiverId:  string,
+  isSuperLike: boolean = false,
 ): Promise<LikeResult> {
   if (senderId === receiverId) {
     throw new Error('Impossible de vous liker vous-même');
+  }
+
+  const access = await getAccessStatus(senderId);
+  if (!access.canSwipe) {
+    throw new Error(
+      !access.isActive
+        ? 'Un abonnement actif est requis pour liker des profils'
+        : 'Votre identité doit être vérifiée pour liker des profils',
+    );
+  }
+  if (isSuperLike) {
+    if (access.limits.dailySuperLikes !== null
+        && access.usage.superLikesToday >= access.limits.dailySuperLikes) {
+      throw new Error('Limite quotidienne de Super Likes atteinte pour votre plan');
+    }
+  } else if (access.limits.dailyLikes !== null
+      && access.usage.likesToday >= access.limits.dailyLikes) {
+    throw new Error('Limite quotidienne de likes atteinte pour votre plan');
   }
 
   const [senderProfile, receiver] = await Promise.all([
@@ -192,8 +242,8 @@ export async function likeUser(
   // Enregistrer le like (idempotent)
   await prisma.like.upsert({
     where:  { senderId_receiverId: { senderId, receiverId } },
-    update: {},
-    create: { senderId, receiverId },
+    update: { isSuperLike },
+    create: { senderId, receiverId, isSuperLike },
   });
   // Nettoyer un éventuel pass précédent
   await prisma.pass.deleteMany({
@@ -328,6 +378,16 @@ export async function passUser(
   passedId: string,
 ): Promise<void> {
   if (passerId === passedId) return;
+
+  const access = await getAccessStatus(passerId);
+  if (!access.canSwipe) {
+    throw new Error(
+      !access.isActive
+        ? 'Un abonnement actif est requis pour passer des profils'
+        : 'Votre identité doit être vérifiée pour passer des profils',
+    );
+  }
+
   await prisma.pass.upsert({
     where:  { passerId_passedId: { passerId, passedId } },
     update: {},

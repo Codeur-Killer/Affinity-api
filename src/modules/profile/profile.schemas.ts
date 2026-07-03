@@ -14,7 +14,9 @@ export const createProfileSchema = z.object({
   city: z.string().max(100).optional(),
 });
 
-export const updateProfileSchema = createProfileSchema.partial();
+export const updateProfileSchema = createProfileSchema.partial().extend({
+  incognito: z.boolean().optional(),
+});
 
 export const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),

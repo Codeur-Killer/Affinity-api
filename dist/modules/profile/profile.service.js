@@ -8,6 +8,7 @@ exports.addPhoto = addPhoto;
 exports.removePhoto = removePhoto;
 exports.updateLocation = updateLocation;
 const prisma_1 = require("../../config/prisma");
+const plan_limits_1 = require("../subscription/plan-limits");
 const MAX_PHOTOS = 5;
 async function createProfile(userId, data) {
     return prisma_1.prisma.profile.create({
@@ -34,6 +35,12 @@ async function getProfileById(userId) {
     return prisma_1.prisma.profile.findUnique({ where: { userId } });
 }
 async function updateProfile(userId, data) {
+    let incognito;
+    if (data.incognito !== undefined) {
+        const access = await (0, plan_limits_1.getAccessStatus)(userId);
+        // Le plan Découverte ne débloque pas le mode Incognito : on ignore la valeur envoyée.
+        incognito = access.limits.canUseIncognito ? data.incognito : false;
+    }
     return prisma_1.prisma.profile.update({
         where: { userId },
         data: {
@@ -48,6 +55,7 @@ async function updateProfile(userId, data) {
             ...(data.latitude !== undefined && { latitude: data.latitude }),
             ...(data.longitude !== undefined && { longitude: data.longitude }),
             ...(data.city !== undefined && { city: data.city }),
+            ...(incognito !== undefined && { incognito }),
             lastSeenAt: new Date(),
         },
     });
