@@ -14,5 +14,6 @@ router.post('/mobile-pay', subscription_controller_1.mobilePay); // paiement Mob
 router.get('/mobile-status', subscription_controller_1.mobilePayStatus); // polling statut
 router.get('/verify/:txId', subscription_controller_1.verifyTx);
 router.post('/boost', subscription_controller_1.boost);
+router.post('/dev-confirm', subscription_controller_1.devConfirm); // sandbox/dev uniquement — bloqué en production
 exports.default = router;
 //# sourceMappingURL=subscription.routes.js.map

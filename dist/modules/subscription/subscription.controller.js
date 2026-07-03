@@ -7,6 +7,7 @@ exports.mobilePay = mobilePay;
 exports.mobilePayStatus = mobilePayStatus;
 exports.webhook = webhook;
 exports.verifyTx = verifyTx;
+exports.devConfirm = devConfirm;
 exports.getPlans = getPlans;
 const subscription_service_1 = require("./subscription.service");
 const plan_limits_1 = require("./plan-limits");
@@ -140,6 +141,28 @@ async function webhook(req, res) {
 async function verifyTx(req, res) {
     try {
         (0, response_1.ok)(res, await (0, subscription_service_1.verifyTransaction)(req.params.txId));
+    }
+    catch {
+        (0, response_1.serverError)(res);
+    }
+}
+// ── Confirmation simulée (sandbox / dev uniquement) ──────────────────────────
+async function devConfirm(req, res) {
+    if (env_1.env.IS_PROD) {
+        (0, response_1.forbidden)(res, 'Non disponible en production');
+        return;
+    }
+    try {
+        const sub = await prisma_1.prisma.subscription.findUnique({ where: { userId: req.user.id } });
+        if (!sub) {
+            (0, response_1.badRequest)(res, 'Aucun abonnement en attente');
+            return;
+        }
+        await prisma_1.prisma.subscription.update({
+            where: { id: sub.id },
+            data: { fedapayStatus: 'approved', expiresAt: new Date(Date.now() + 30 * 86400000) },
+        });
+        (0, response_1.ok)(res, { approved: true }, 'Paiement simulé avec succès');
     }
     catch {
         (0, response_1.serverError)(res);

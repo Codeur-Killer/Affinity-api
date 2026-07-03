@@ -36,61 +36,46 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCurrentSubscription = getCurrentSubscription;
 exports.activateBoost = activateBoost;
 exports.createCheckout = createCheckout;
-exports.handleWebhook = handleWebhook;
-exports.verifyTransaction = verifyTransaction;
 exports.payMobileMoney = payMobileMoney;
 exports.checkMobilePayStatus = checkMobilePayStatus;
+exports.verifyTransaction = verifyTransaction;
+exports.handleWebhook = handleWebhook;
 const axios_1 = __importStar(require("axios"));
+const crypto_1 = require("crypto");
 const prisma_1 = require("../../config/prisma");
 const env_1 = require("../../config/env");
+// ── Config plans ──────────────────────────────────────────────────────────────
 const PLANS = {
     DECOUVERTE: { label: 'Découverte', amount: env_1.env.PLAN_PRICE_DECOUVERTE, durationDays: 30 },
     STANDARD: { label: 'Standard', amount: env_1.env.PLAN_PRICE_STANDARD, durationDays: 30 },
     PREMIUM: { label: 'Premium', amount: env_1.env.PLAN_PRICE_PREMIUM, durationDays: 30 },
 };
-const isSandbox = env_1.env.FEDAPAY_SECRET_KEY.startsWith('sk_sandbox_');
-// URL auto-détectée d'après la clé — plus besoin de changer FEDAPAY_BASE_URL manuellement
-const FEDAPAY_BASE_URL = isSandbox
-    ? 'https://sandbox-api.fedapay.com'
-    : 'https://api.fedapay.com';
-// Log de debug au démarrage
-const _keyPreview = env_1.env.FEDAPAY_SECRET_KEY.length > 8
-    ? `${env_1.env.FEDAPAY_SECRET_KEY.slice(0, 12)}...${env_1.env.FEDAPAY_SECRET_KEY.slice(-4)}`
-    : '(VIDE ou trop courte)';
-console.log(`[FedaPay] Clé : ${_keyPreview} | Mode: ${isSandbox ? 'SANDBOX' : '🟢 LIVE'} | URL: ${FEDAPAY_BASE_URL}`);
-const fedapayHeaders = () => ({
-    Authorization: `Bearer ${env_1.env.FEDAPAY_SECRET_KEY.trim()}`, // trim() au cas où espaces parasites
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-});
-// ── Extrait le vrai objet transaction de la réponse FedaPay ──────────────────
-// FedaPay retourne { "v1/transaction": {...} } (clé avec slash)
-function parseTx(data) {
-    if (!data || typeof data !== 'object')
-        return null;
-    const d = data;
-    // Format réel : { "v1/transaction": { id, payment_url, ... } }
-    const bySlashKey = d['v1/transaction'];
-    if (bySlashKey?.id)
-        return bySlashKey;
-    // Formats alternatifs (au cas où)
-    const byV1 = d.v1?.transaction;
-    if (byV1?.id)
-        return byV1;
-    if (d.transaction)
-        return d.transaction;
-    if (d.id)
-        return d;
-    return null;
+// ── CinetPay ──────────────────────────────────────────────────────────────────
+const CINETPAY_API = 'https://api-checkout.cinetpay.com/v2';
+// ID de transaction unique ≤ 20 caractères alphanum (exigence CinetPay)
+function generateTxId() {
+    return ('AF' + (0, crypto_1.randomUUID)().replace(/-/g, '')).slice(0, 20);
 }
-// ── Construit l'URL de checkout FedaPay (fallback si payment_url absent) ─────
-function buildCheckoutUrl(tokenOrId) {
-    const base = isSandbox
-        ? 'https://sandbox-process.fedapay.com' // URL réelle sandbox
-        : 'https://process.fedapay.com';
-    return `${base}/payment-page/${tokenOrId}`;
+function cinetpayBase(txId, plan) {
+    const planInfo = PLANS[plan];
+    return {
+        apikey: env_1.env.CINETPAY_API_KEY,
+        site_id: env_1.env.CINETPAY_SITE_ID,
+        transaction_id: txId,
+        amount: planInfo.amount,
+        currency: 'XOF',
+        description: `Abonnement Affinity ${planInfo.label}`,
+        return_url: `${env_1.env.API_URL}/api/subscription/result?status=success&plan=${plan}`,
+        notify_url: `${env_1.env.API_URL}/api/subscription/webhook`,
+        customer_address: 'Lomé',
+        customer_city: 'Lomé',
+        customer_country: 'TG',
+        customer_state: 'TG',
+        customer_zip_code: '00228',
+        channels: 'MOBILE_MONEY',
+    };
 }
-// ── PUBLIC API ─────────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
 async function getCurrentSubscription(userId) {
     return prisma_1.prisma.subscription.findUnique({ where: { userId } });
 }
@@ -100,220 +85,94 @@ async function activateBoost(userId) {
     await prisma_1.prisma.boost.create({ data: { userId, expiresAt } });
     return { activeUntil: expiresAt };
 }
+// Checkout web — retourne une URL CinetPay (fallback ou usage admin)
 async function createCheckout(userId, plan, customer) {
     const planInfo = PLANS[plan];
     if (!planInfo)
         throw new Error('Plan invalide');
-    const callbackUrl = `${env_1.env.API_URL}/api/subscription/webhook`;
-    // return_url = URL interceptée par le WebView Flutter pour détecter la fin du paiement
-    const returnUrl = `${env_1.env.API_URL}/api/subscription/result?status=success&plan=${plan}`;
-    // 1. Créer la transaction
-    let txId;
+    const txId = generateTxId();
+    let res;
     try {
-        const res = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions`, {
-            description: `Abonnement Affinity ${planInfo.label}`,
-            amount: planInfo.amount,
-            currency: { iso: 'XOF' },
-            customer: {
-                email: customer.email,
-                firstname: customer.firstname,
-                lastname: customer.lastname,
-            },
-            callback_url: callbackUrl,
-            return_url: returnUrl,
-            additional_details: `userId=${userId}&plan=${plan}`,
-        }, { headers: fedapayHeaders(), timeout: 20000 });
-        const tx = parseTx(res.data);
-        if (!tx?.id) {
-            console.error('[FedaPay] Réponse:', JSON.stringify(res.data).substring(0, 300));
-            throw new Error('FedaPay: aucun ID de transaction reçu');
-        }
-        txId = tx.id;
-        // ✅ FedaPay retourne payment_url directement dans la réponse de création
-        const directUrl = tx.payment_url;
-        console.log('[FedaPay] Transaction créée:', txId, '| payment_url:', directUrl ?? '(absent)');
-        if (directUrl || txId) {
-            const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
-            await prisma_1.prisma.subscription.upsert({
-                where: { userId },
-                update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
-                create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
-            });
-            // ✅ Utiliser notre page de paiement hébergée au lieu de sandbox-process.fedapay.com
-            // (qui bloque les connexions depuis Android)
-            const hostedUrl = `${env_1.env.API_URL}/payment?txId=${txId}&plan=${plan}&amount=${planInfo.amount}`;
-            return { transactionId: txId, paymentUrl: hostedUrl, plan, amount: planInfo.amount };
-        }
+        res = await axios_1.default.post(`${CINETPAY_API}/payment`, {
+            ...cinetpayBase(txId, plan),
+            customer_email: customer.email,
+            customer_name: customer.firstname,
+            customer_surname: customer.lastname,
+        }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
     }
     catch (e) {
         if (e instanceof axios_1.AxiosError) {
-            const status = e.response?.status;
-            const body = JSON.stringify(e.response?.data ?? e.message);
-            console.error(`[FedaPay] Erreur création: HTTP ${status} – ${body}`);
-            if (status === 401) {
-                throw new Error(`Clé FedaPay invalide (401). URL: ${FEDAPAY_BASE_URL}. ` +
-                    'Vérifiez FEDAPAY_SECRET_KEY sur app.fedapay.com → Paramètres → Clés API');
-            }
-            throw new Error(`FedaPay erreur ${status}: ${body}`);
+            throw new Error(e.response?.data?.message ?? `Erreur réseau CinetPay: ${e.message}`);
         }
         throw e;
     }
-    // 2. Fallback : appeler /token si payment_url n'était pas dans la réponse
-    let paymentUrl;
-    try {
-        const tokenRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}/token`, {}, { headers: fedapayHeaders(), timeout: 15000 });
-        const td = tokenRes.data;
-        const url = (td.payment_url ?? td.url ?? td.v1?.url);
-        const token = (td.payment_token ?? td.token ?? td.v1?.token);
-        paymentUrl = url ?? (token ? buildCheckoutUrl(token) : buildCheckoutUrl(String(txId)));
-        console.log('[FedaPay] Token URL:', paymentUrl);
+    const data = res.data?.data;
+    if (!data?.payment_token) {
+        console.error('[CinetPay] Erreur checkout:', res.data);
+        throw new Error(res.data?.message ?? 'CinetPay: aucun token reçu');
     }
-    catch {
-        paymentUrl = buildCheckoutUrl(String(txId));
-    }
-    // 3. Sauvegarder la transaction en attente en DB
-    const expiresAt = new Date(Date.now() + planInfo.durationDays * 24 * 60 * 60 * 1000);
-    await prisma_1.prisma.subscription.upsert({
-        where: { userId },
-        update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
-        create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
-    });
-    return { transactionId: txId, paymentUrl, plan, amount: planInfo.amount };
-}
-async function handleWebhook(payload) {
-    // FedaPay envoie { name: "transaction.approved", data: { id, status, ... } }
-    const txData = payload?.data;
-    if (!txData)
-        return;
-    const txId = String(txData.id ?? '');
-    const rawStatus = (txData.status ?? '').toLowerCase();
-    if (!txId)
-        return;
-    const sub = await prisma_1.prisma.subscription.findFirst({ where: { fedapayTxId: txId } });
-    if (!sub) {
-        // Essayer de retrouver via additional_details
-        const details = txData.additional_details;
-        if (details) {
-            const params = Object.fromEntries(new URLSearchParams(details));
-            const uid = params['userId'];
-            const plan = params['plan'];
-            if (uid && plan) {
-                const days = PLANS[plan]?.durationDays ?? 30;
-                await prisma_1.prisma.subscription.upsert({
-                    where: { userId: uid },
-                    update: { plan, fedapayTxId: txId, fedapayStatus: rawStatus,
-                        expiresAt: new Date(Date.now() + days * 86400000) },
-                    create: { userId: uid, plan, fedapayTxId: txId, fedapayStatus: rawStatus,
-                        expiresAt: new Date(Date.now() + days * 86400000) },
-                });
-            }
-        }
-        return;
-    }
-    const approved = rawStatus === 'approved' || rawStatus === 'transferred';
-    await prisma_1.prisma.subscription.update({
-        where: { id: sub.id },
-        data: {
-            fedapayStatus: rawStatus,
-            ...(approved && {
-                expiresAt: new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000),
-            }),
-        },
-    });
-}
-async function verifyTransaction(txId) {
-    const res = await axios_1.default.get(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}`, { headers: fedapayHeaders(), timeout: 10000 });
-    const tx = parseTx(res.data);
-    const status = (tx?.status ?? 'unknown').toLowerCase();
-    return { status, approved: status === 'approved' || status === 'transferred' };
-}
-async function payMobileMoney(input) {
-    const { userId, plan, phone, network, customer } = input;
-    const planInfo = PLANS[plan];
-    if (!planInfo)
-        throw new Error('Plan invalide');
-    const callbackUrl = `${env_1.env.API_URL}/api/subscription/webhook`;
-    // Normaliser le numéro (enlever le +228 si présent → FedaPay attend juste les chiffres)
-    const normalizedPhone = phone.replace(/^\+228/, '').replace(/\D/g, '');
-    // 1. Créer la transaction FedaPay
-    const txRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions`, {
-        description: `Abonnement Affinity ${planInfo.label}`,
-        amount: planInfo.amount,
-        currency: { iso: 'XOF' },
-        customer: {
-            email: customer.email,
-            firstname: customer.firstname,
-            lastname: customer.lastname,
-            phone_number: { number: normalizedPhone, country: 'TG' },
-        },
-        callback_url: callbackUrl,
-        additional_details: `userId=${userId}&plan=${plan}`,
-    }, { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true });
-    // Log complet pour debug
-    console.log('[FedaPay Mobile] Création transaction — statut:', txRes.status, '| réponse:', JSON.stringify(txRes.data).slice(0, 300));
-    if (txRes.status >= 400) {
-        const body = txRes.data;
-        const errors = body?.errors;
-        // Extraire les erreurs de validation FedaPay (ex: montant max dépassé)
-        const detail = errors
-            ? Object.entries(errors).map(([k, v]) => `${k}: ${v.join(', ')}`).join(' | ')
-            : String(body?.message ?? 'Erreur inconnue');
-        console.error('[FedaPay Mobile] Erreur création:', txRes.status, detail);
-        throw new Error(detail);
-    }
-    const tx = parseTx(txRes.data);
-    if (!tx?.id)
-        throw new Error('FedaPay : aucun ID de transaction reçu');
-    const txId = tx.id;
-    console.log('[FedaPay Mobile] Transaction créée:', txId);
-    // 2. Tenter l'initiation USSD directe (fonctionne avec les clés live, pas sandbox)
-    let ussdInitiated = false;
-    try {
-        const payRes = await axios_1.default.post(`${FEDAPAY_BASE_URL}/v1/transactions/${txId}/pay`, {
-            payment_method: network,
-            phone_number: { number: normalizedPhone, country: 'TG' },
-        }, { headers: fedapayHeaders(), timeout: 20000, validateStatus: () => true });
-        if (payRes.status < 400) {
-            ussdInitiated = true;
-            console.log('[FedaPay Mobile] USSD initié, statut HTTP:', payRes.status);
-        }
-        else {
-            console.log('[FedaPay Mobile] /pay non disponible (sandbox?):', payRes.status, JSON.stringify(payRes.data).slice(0, 150));
-        }
-    }
-    catch (e) {
-        console.log('[FedaPay Mobile] /pay exception (sandbox?):', String(e).slice(0, 100));
-    }
-    // 3. Sauvegarder en DB
+    console.log('[CinetPay] Transaction créée:', txId, '| URL:', data.payment_url);
     const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
     await prisma_1.prisma.subscription.upsert({
         where: { userId },
-        update: { plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
-        create: { userId, plan, fedapayTxId: String(txId), fedapayStatus: 'pending', expiresAt },
+        update: { plan, fedapayTxId: txId, fedapayStatus: 'pending', expiresAt },
+        create: { userId, plan, fedapayTxId: txId, fedapayStatus: 'pending', expiresAt },
     });
-    if (ussdInitiated) {
-        // Production : prompt USSD envoyé sur le téléphone
-        return {
-            transactionId: txId,
-            status: 'pending',
-            message: 'Confirmez le paiement sur votre téléphone (prompt USSD)',
-            plan,
-            amount: planInfo.amount,
-        };
+    return { transactionId: txId, paymentUrl: data.payment_url, plan, amount: planInfo.amount };
+}
+// Paiement Mobile Money direct (T-Money / Flooz) — prompt USSD sur le téléphone
+async function payMobileMoney(input) {
+    const { userId, plan, phone, customer } = input;
+    const planInfo = PLANS[plan];
+    if (!planInfo)
+        throw new Error('Plan invalide');
+    // Normaliser le numéro (enlever +228 si présent)
+    const normalizedPhone = phone.replace(/^\+228/, '').replace(/\D/g, '');
+    const txId = generateTxId();
+    console.log('[CinetPay Mobile] Initiation — txId:', txId, '| phone:', normalizedPhone, '| plan:', plan);
+    let paymentUrl;
+    try {
+        const res = await axios_1.default.post(`${CINETPAY_API}/payment`, {
+            ...cinetpayBase(txId, plan),
+            customer_email: customer.email,
+            customer_name: customer.firstname,
+            customer_surname: customer.lastname,
+            customer_phone_number: `+228${normalizedPhone}`,
+        }, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000,
+            validateStatus: () => true,
+        });
+        console.log('[CinetPay Mobile] Réponse HTTP', res.status, ':', JSON.stringify(res.data).slice(0, 300));
+        if (res.status >= 400) {
+            throw new Error(res.data?.message ?? `Erreur CinetPay (${res.status})`);
+        }
+        paymentUrl = res.data?.data?.payment_url;
     }
-    // Sandbox (ou clés live non encore activées) : retourner l'URL de checkout FedaPay
-    const checkoutUrl = `${env_1.env.API_URL}/payment?txId=${txId}&plan=${plan}&amount=${planInfo.amount}`;
-    console.log('[FedaPay Mobile] Fallback checkout URL:', checkoutUrl);
+    catch (e) {
+        if (e instanceof axios_1.AxiosError) {
+            throw new Error(e.response?.data?.message ?? e.message);
+        }
+        throw e;
+    }
+    // Sauvegarder en DB
+    const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
+    await prisma_1.prisma.subscription.upsert({
+        where: { userId },
+        update: { plan, fedapayTxId: txId, fedapayStatus: 'pending', expiresAt },
+        create: { userId, plan, fedapayTxId: txId, fedapayStatus: 'pending', expiresAt },
+    });
     return {
         transactionId: txId,
         status: 'pending',
-        message: 'Ouvrez le lien pour finaliser le paiement Mobile Money',
+        message: 'Confirmez le paiement sur votre téléphone',
         plan,
         amount: planInfo.amount,
-        checkoutUrl,
+        // checkoutUrl uniquement en mode non-production (bouton "Simuler" Flutter)
+        ...(!env_1.env.IS_PROD && paymentUrl ? { checkoutUrl: paymentUrl } : {}),
     };
 }
-// Vérifier le statut d'un paiement mobile money (polling depuis Flutter)
+// Polling statut depuis Flutter
 async function checkMobilePayStatus(userId) {
     const sub = await prisma_1.prisma.subscription.findUnique({ where: { userId } });
     if (!sub?.fedapayTxId)
@@ -323,8 +182,10 @@ async function checkMobilePayStatus(userId) {
         if (approved && sub.fedapayStatus !== 'approved') {
             await prisma_1.prisma.subscription.update({
                 where: { id: sub.id },
-                data: { fedapayStatus: 'approved',
-                    expiresAt: new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000) },
+                data: {
+                    fedapayStatus: 'approved',
+                    expiresAt: new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000),
+                },
             });
         }
         return { status, approved, plan: sub.plan };
@@ -332,5 +193,39 @@ async function checkMobilePayStatus(userId) {
     catch {
         return { status: sub.fedapayStatus ?? 'pending', approved: false, plan: sub.plan };
     }
+}
+// Vérifier une transaction CinetPay
+async function verifyTransaction(txId) {
+    const res = await axios_1.default.post(`${CINETPAY_API}/payment/check`, {
+        apikey: env_1.env.CINETPAY_API_KEY,
+        site_id: env_1.env.CINETPAY_SITE_ID,
+        transaction_id: txId,
+    }, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
+    const code = String(res.data?.code ?? '');
+    const status = String(res.data?.data?.status ?? 'PENDING').toUpperCase();
+    const approved = code === '00' || status === 'ACCEPTED';
+    return { status, approved };
+}
+// Webhook CinetPay (notify_url)
+async function handleWebhook(payload) {
+    // CinetPay envoie : cpm_trans_id, cpm_trans_status (ACCEPTED/REFUSED/CANCELLED)
+    const txId = String(payload.cpm_trans_id ?? payload.transaction_id ?? '');
+    const rawStatus = String(payload.cpm_trans_status ?? payload.status ?? '').toUpperCase();
+    if (!txId)
+        return;
+    const approved = rawStatus === 'ACCEPTED';
+    const sub = await prisma_1.prisma.subscription.findFirst({ where: { fedapayTxId: txId } });
+    if (!sub)
+        return;
+    await prisma_1.prisma.subscription.update({
+        where: { id: sub.id },
+        data: {
+            fedapayStatus: rawStatus.toLowerCase(),
+            ...(approved && {
+                expiresAt: new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000),
+            }),
+        },
+    });
+    console.log(`[CinetPay Webhook] tx=${txId} status=${rawStatus} plan=${sub.plan}`);
 }
 //# sourceMappingURL=subscription.service.js.map
