@@ -60,11 +60,16 @@ async function sendOtp(rawPhone) {
         data: { expiresAt: new Date(0) },
     });
     await prisma_1.prisma.otpCode.create({ data: { phone, code, expiresAt } });
-    // Log toujours visible (debug + backup si SMS échoue)
-    console.log('\n' + '='.repeat(50));
-    console.log(`📱 OTP ${phone} : ${code}  (5 min)`);
-    console.log('='.repeat(50) + '\n');
-    await sendSmsAfrik(phone, `Votre code Affinity : ${code}\nValable 5 minutes. Ne partagez jamais ce code.`);
+    // En développement uniquement pour faciliter les tests
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[OTP DEV] ${phone} → ${code}`);
+    }
+    if (env_1.env.SMS_API_KEY && env_1.env.SMS_CLIENT_ID) {
+        await sendSmsAfrik(phone, `Votre code Affinity : ${code}\nValable 5 minutes. Ne partagez jamais ce code.`);
+    }
+    else {
+        console.warn('[OTP] SMS non configuré — code non envoyé pour', phone);
+    }
 }
 async function verifyOtp(rawPhone, code) {
     const phone = formatTogoPhone(rawPhone);

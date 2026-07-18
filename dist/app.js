@@ -20,6 +20,8 @@ const subscription_routes_1 = __importDefault(require("./modules/subscription/su
 const verification_routes_1 = __importDefault(require("./modules/verification/verification.routes"));
 const settings_routes_1 = __importDefault(require("./modules/settings/settings.routes"));
 const admin_routes_1 = __importDefault(require("./modules/admin/admin.routes"));
+const referral_routes_1 = __importDefault(require("./modules/referral/referral.routes"));
+const blocks_routes_1 = __importDefault(require("./modules/blocks/blocks.routes"));
 const app = (0, express_1.default)();
 // Render (et autres PaaS) utilisent un reverse proxy — on lui fait confiance
 // pour que express-rate-limit puisse lire correctement X-Forwarded-For
@@ -40,6 +42,16 @@ const limiter = (0, express_rate_limit_1.default)({
     message: { success: false, message: 'Trop de requêtes, réessayez dans 15 minutes' },
 });
 app.use('/api', limiter);
+// Rate limiter strict pour les envois OTP (5 par téléphone par heure)
+const otpLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    keyGenerator: (req) => req.body?.phone || req.ip || 'unknown',
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Trop de demandes OTP. Réessayez dans 1 heure.' },
+});
+app.use('/api/auth/otp/send', otpLimiter);
 // ─── Parsing ───────────────────────────────────────────
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
@@ -90,6 +102,8 @@ app.use('/api/subscription', subscription_routes_1.default);
 app.use('/api/verification', verification_routes_1.default);
 app.use('/api/settings', settings_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
+app.use('/api/referral', referral_routes_1.default);
+app.use('/api/blocks', blocks_routes_1.default);
 // ─── Gestion des erreurs ───────────────────────────────
 app.use(error_middleware_1.notFoundHandler);
 app.use(error_middleware_1.globalErrorHandler);

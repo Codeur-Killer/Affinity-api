@@ -30,9 +30,11 @@ model User {
   receivedLikes Like[]         @relation("ReceivedLikes")
   matches1      Match[]        @relation("MatchUser1")
   matches2      Match[]        @relation("MatchUser2")
-  blocksGiven   Block[]        @relation("Blocker")
-  blocksReceived Block[]       @relation("Blocked")
-  boosts        Boost[]
+  blocksGiven      Block[]    @relation("Blocker")
+  blocksReceived   Block[]    @relation("Blocked")
+  boosts           Boost[]
+  referralsGiven   Referral[] @relation("ReferralGiven")
+  referralReceived Referral?  @relation("ReferralReceived")
 
   @@map("users")
 }
@@ -217,6 +219,21 @@ model OtpCode {
 }
 
 // ─────────────────────────────────────────────
+// PARRAINAGE (REFERRAL)
+// ─────────────────────────────────────────────
+model Referral {
+  id             String   @id @default(uuid())
+  referrerId     String   @map("referrer_id")
+  referrer       User     @relation("ReferralGiven", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUserId String   @unique @map("referred_user_id")
+  referredUser   User     @relation("ReferralReceived", fields: [referredUserId], references: [id], onDelete: Cascade)
+  rewardAmount   Int      @default(1500) @map("reward_amount")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("referrals")
+}
+
+// ─────────────────────────────────────────────
 // BLOCAGE
 // ─────────────────────────────────────────────
 model Block {
@@ -242,6 +259,7 @@ enum Gender {
 
 enum RelationshipGoal {
   FLIRT
+  FRIENDSHIP
   LOVE
 }
 

@@ -18,27 +18,42 @@ const envSchema = zod_1.z.object({
     FIREBASE_PROJECT_ID: zod_1.z.string(),
     FIREBASE_CLIENT_EMAIL: zod_1.z.string(),
     FIREBASE_PRIVATE_KEY: zod_1.z.string(),
-    CINETPAY_API_KEY: zod_1.z.string().min(1),
-    CINETPAY_SECRET_KEY: zod_1.z.string().min(1),
-    CINETPAY_SITE_ID: zod_1.z.string().min(1),
+    FEDAPAY_SECRET_KEY: zod_1.z.string().min(1),
+    FEDAPAY_PUBLIC_KEY: zod_1.z.string().optional(),
     PLAN_PRICE_DECOUVERTE: zod_1.z.string().default('5000'),
     PLAN_PRICE_STANDARD: zod_1.z.string().default('15000'),
     PLAN_PRICE_PREMIUM: zod_1.z.string().default('25000'),
     UPLOAD_DIR: zod_1.z.string().default('uploads'),
     MAX_FILE_SIZE_MB: zod_1.z.string().default('10'),
     SMS_API_URL: zod_1.z.string().default('https://api.afriksms.com/api/web/web_v1/outbounds/send'),
-    SMS_API_KEY: zod_1.z.string(),
-    SMS_CLIENT_ID: zod_1.z.string(),
+    SMS_API_KEY: zod_1.z.string().optional(),
+    SMS_CLIENT_ID: zod_1.z.string().optional(),
     SMS_SENDER_ID: zod_1.z.string().default('Affinity'),
-    CLOUDINARY_CLOUD_NAME: zod_1.z.string(),
-    CLOUDINARY_API_KEY: zod_1.z.string(),
-    CLOUDINARY_API_SECRET: zod_1.z.string(),
+    CLOUDINARY_CLOUD_NAME: zod_1.z.string().optional(),
+    CLOUDINARY_API_KEY: zod_1.z.string().optional(),
+    CLOUDINARY_API_SECRET: zod_1.z.string().optional(),
 });
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
     console.error('❌ Variables d\'environnement invalides:');
     console.error(parsed.error.flatten().fieldErrors);
     process.exit(1);
+}
+// Avertissements pour les services optionnels non configurés
+const d = parsed.data;
+const missing = [];
+if (!d.SMS_API_KEY || !d.SMS_CLIENT_ID)
+    missing.push('SMS (OTP par SMS désactivé)');
+if (!d.CLOUDINARY_CLOUD_NAME || !d.CLOUDINARY_API_KEY || !d.CLOUDINARY_API_SECRET)
+    missing.push('Cloudinary (photos désactivées)');
+if (d.FIREBASE_PROJECT_ID === 'your-project-id')
+    missing.push('Firebase credentials (notifications FCM désactivées)');
+if (d.JWT_SECRET === 'change_this_to_a_long_random_string')
+    missing.push('JWT_SECRET sécurisé');
+if (missing.length) {
+    console.warn('\n⚠️  Variables d\'environnement manquantes ou placeholders:');
+    missing.forEach((m) => console.warn(`   • ${m}`));
+    console.warn('   → Configurer ces variables avant la mise en production.\n');
 }
 exports.env = {
     ...parsed.data,

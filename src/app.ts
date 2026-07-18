@@ -15,7 +15,9 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import subscriptionRoutes from './modules/subscription/subscription.routes';
 import verificationRoutes from './modules/verification/verification.routes';
 import settingsRoutes from './modules/settings/settings.routes';
-import adminRoutes from './modules/admin/admin.routes';
+import adminRoutes    from './modules/admin/admin.routes';
+import referralRoutes from './modules/referral/referral.routes';
+import blocksRoutes   from './modules/blocks/blocks.routes';
 
 const app = express();
 
@@ -43,6 +45,17 @@ const limiter = rateLimit({
   message: { success: false, message: 'Trop de requêtes, réessayez dans 15 minutes' },
 });
 app.use('/api', limiter);
+
+// Rate limiter strict pour les envois OTP (5 par téléphone par heure)
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => (req.body?.phone as string) || req.ip || 'unknown',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Trop de demandes OTP. Réessayez dans 1 heure.' },
+});
+app.use('/api/auth/otp/send', otpLimiter);
 
 // ─── Parsing ───────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -98,7 +111,9 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/settings', settingsRoutes);
-app.use('/api/admin',   adminRoutes);
+app.use('/api/admin',    adminRoutes);
+app.use('/api/referral', referralRoutes);
+app.use('/api/blocks',   blocksRoutes);
 
 // ─── Gestion des erreurs ───────────────────────────────
 app.use(notFoundHandler);
