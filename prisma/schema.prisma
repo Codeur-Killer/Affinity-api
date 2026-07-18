@@ -32,9 +32,13 @@ model User {
   matches2      Match[]        @relation("MatchUser2")
   blocksGiven      Block[]    @relation("Blocker")
   blocksReceived   Block[]    @relation("Blocked")
+  isVip    Boolean  @default(false) @map("is_vip")
+  vipCode  String?  @unique @map("vip_code")
+
   boosts           Boost[]
   referralsGiven   Referral[] @relation("ReferralGiven")
   referralReceived Referral?  @relation("ReferralReceived")
+  vipCommissions   VipReferral[]
 
   @@map("users")
 }
@@ -138,11 +142,13 @@ model Subscription {
   userId        String             @unique @map("user_id")
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan          Plan
-  fedapayTxId   String?            @map("fedapay_tx_id")
-  fedapayStatus String?            @map("fedapay_status")
-  expiresAt     DateTime           @map("expires_at")
-  createdAt     DateTime           @default(now()) @map("created_at")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
+  fedapayTxId    String?  @map("fedapay_tx_id")
+  fedapayStatus  String?  @map("fedapay_status")
+  vipCodeUsed    String?  @map("vip_code_used")
+  discountAmount Int?     @map("discount_amount")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@map("subscriptions")
 }
@@ -231,6 +237,21 @@ model Referral {
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@map("referrals")
+}
+
+// ─────────────────────────────────────────────
+// SYSTÈME VIP (codes de parrainage VIP)
+// ─────────────────────────────────────────────
+model VipReferral {
+  id               String   @id @default(uuid())
+  vipUserId        String   @map("vip_user_id")
+  vipUser          User     @relation(fields: [vipUserId], references: [id], onDelete: Cascade)
+  subscriberUserId String   @map("subscriber_user_id")
+  commission       Int      @default(950)
+  plan             Plan
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("vip_referrals")
 }
 
 // ─────────────────────────────────────────────

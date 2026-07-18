@@ -41,6 +41,10 @@ exports.promoteUser = promoteUser;
 exports.verifications = verifications;
 exports.reviewVerification = reviewVerification;
 exports.subscriptions = subscriptions;
+exports.listVips = listVips;
+exports.createVip = createVip;
+exports.updateVip = updateVip;
+exports.revokeVip = revokeVip;
 const svc = __importStar(require("./admin.service"));
 const response_1 = require("../../utils/response");
 async function stats(req, res) {
@@ -119,6 +123,45 @@ async function subscriptions(req, res) {
     }
     catch {
         (0, response_1.serverError)(res);
+    }
+}
+// ── VIP ───────────────────────────────────────────────────────────────────────
+async function listVips(_req, res) {
+    try {
+        (0, response_1.ok)(res, await svc.listVips());
+    }
+    catch {
+        (0, response_1.serverError)(res);
+    }
+}
+async function createVip(req, res) {
+    try {
+        const { userId, vipCode } = req.body;
+        if (!userId || !vipCode) {
+            (0, response_1.badRequest)(res, 'userId et vipCode requis');
+            return;
+        }
+        (0, response_1.ok)(res, await svc.createVip(userId, vipCode), 'Compte VIP créé');
+    }
+    catch (e) {
+        (0, response_1.badRequest)(res, e instanceof Error ? e.message : 'Erreur création VIP');
+    }
+}
+async function updateVip(req, res) {
+    try {
+        const data = req.body;
+        (0, response_1.ok)(res, await svc.updateVip(req.params.userId, data), 'Compte VIP mis à jour');
+    }
+    catch (e) {
+        (0, response_1.badRequest)(res, e instanceof Error ? e.message : 'Erreur mise à jour VIP');
+    }
+}
+async function revokeVip(req, res) {
+    try {
+        (0, response_1.ok)(res, await svc.revokeVip(req.params.userId), 'Statut VIP révoqué');
+    }
+    catch (e) {
+        (0, response_1.badRequest)(res, e instanceof Error ? e.message : 'Erreur révocation VIP');
     }
 }
 //# sourceMappingURL=admin.controller.js.map

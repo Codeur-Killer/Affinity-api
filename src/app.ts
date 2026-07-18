@@ -16,6 +16,7 @@ import subscriptionRoutes from './modules/subscription/subscription.routes';
 import verificationRoutes from './modules/verification/verification.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import adminRoutes    from './modules/admin/admin.routes';
+import vipRoutes      from './modules/vip/vip.routes';
 import referralRoutes from './modules/referral/referral.routes';
 import blocksRoutes   from './modules/blocks/blocks.routes';
 
@@ -112,6 +113,7 @@ app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin',    adminRoutes);
+app.use('/api/vip',      vipRoutes);
 app.use('/api/referral', referralRoutes);
 app.use('/api/blocks',   blocksRoutes);
 

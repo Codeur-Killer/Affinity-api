@@ -9,6 +9,7 @@ router.post('/webhook', subscription_controller_1.webhook);
 router.get('/plans', subscription_controller_1.getPlans); // public — sans auth
 router.use(auth_middleware_1.authenticate);
 router.get('/', subscription_controller_1.getSubscription);
+router.get('/validate-code', subscription_controller_1.validateCode); // validation code VIP (auth requis)
 router.post('/checkout', subscription_controller_1.checkout); // checkout web (fallback)
 router.post('/mobile-pay', subscription_controller_1.mobilePay); // paiement Mobile Money direct
 router.get('/mobile-status', subscription_controller_1.mobilePayStatus); // polling statut

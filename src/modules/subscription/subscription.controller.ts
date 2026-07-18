@@ -8,6 +8,7 @@ import {
   payMobileMoney,
   checkMobilePayStatus,
   activateBoost,
+  validateVipCode,
 } from './subscription.service';
 import { getAccessStatus } from './plan-limits';
 import { ok, badRequest, forbidden, serverError } from '../../utils/response';
@@ -43,6 +44,7 @@ export async function getSubscription(req: Request, res: Response): Promise<void
       plan:         access.plan,
       isVerified:   access.isVerified,
       canSwipe:     access.canSwipe,
+      isVip:        access.isVip,
       limits:       access.limits,
       usage:        access.usage,
     });
@@ -68,7 +70,7 @@ export async function boost(req: Request, res: Response): Promise<void> {
 
 export async function checkout(req: Request, res: Response): Promise<void> {
   try {
-    const { plan } = req.body as { plan: string };
+    const { plan, vipCode } = req.body as { plan: string; vipCode?: string };
     if (!VALID_PLANS.includes(plan as Plan)) {
       badRequest(res, `Plan invalide. Valeurs : ${VALID_PLANS.join(', ')}`);
       return;
@@ -83,7 +85,7 @@ export async function checkout(req: Request, res: Response): Promise<void> {
       firstname: (user as any).profile?.firstName ?? 'Utilisateur',
       lastname:  (user as any).profile?.lastName  ?? 'Affinity',
     };
-    const result = await createCheckout(req.user!.id, plan as Plan, customer);
+    const result = await createCheckout(req.user!.id, plan as Plan, customer, vipCode);
     ok(res, result, 'Lien de paiement créé');
   } catch (err: unknown) {
     serverError(res, fedaMsg(err, 'Erreur création checkout'));
@@ -91,12 +93,23 @@ export async function checkout(req: Request, res: Response): Promise<void> {
 }
 
 // ── Paiement Mobile Money direct (T-Money / Flooz) ──────────────────────────
+export async function validateCode(req: Request, res: Response): Promise<void> {
+  try {
+    const code = ((req.query.code as string) ?? '').trim().toUpperCase();
+    if (!code) { badRequest(res, 'code requis'); return; }
+    ok(res, await validateVipCode(code));
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Code invalide');
+  }
+}
+
 export async function mobilePay(req: Request, res: Response): Promise<void> {
   try {
-    const { plan, phone, network } = req.body as {
-      plan:    string;
-      phone:   string;
-      network: string;
+    const { plan, phone, network, vipCode } = req.body as {
+      plan:     string;
+      phone:    string;
+      network:  string;
+      vipCode?: string;
     };
 
     if (!VALID_PLANS.includes(plan as Plan)) {
@@ -122,6 +135,7 @@ export async function mobilePay(req: Request, res: Response): Promise<void> {
       plan:     plan as Plan,
       phone,
       network,
+      vipCode,
       customer: {
         email:     user.email ?? `user_${user.id}@affinity.app`,
         firstname: (user as any).profile?.firstName ?? 'Utilisateur',

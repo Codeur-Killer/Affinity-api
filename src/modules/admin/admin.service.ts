@@ -176,6 +176,80 @@ export async function getSubscriptions(page = 1, limit = 20) {
   };
 }
 
+// ── Gestion des VIP ───────────────────────────────────────────────────────────
+
+export async function listVips() {
+  const vips = await prisma.user.findMany({
+    where:   { isVip: true },
+    select: {
+      id:      true,
+      email:   true,
+      phone:   true,
+      vipCode: true,
+      createdAt: true,
+      profile: { select: { firstName: true, lastName: true } },
+      vipCommissions: {
+        select: { commission: true, createdAt: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return vips.map((u) => ({
+    id:               u.id,
+    email:            u.email,
+    phone:            u.phone,
+    vipCode:          u.vipCode,
+    firstName:        u.profile?.firstName,
+    lastName:         u.profile?.lastName,
+    createdAt:        u.createdAt,
+    totalReferrals:   u.vipCommissions.length,
+    totalCommissions: u.vipCommissions.reduce((s, r) => s + r.commission, 0),
+  }));
+}
+
+export async function createVip(userId: string, vipCode: string) {
+  const code     = vipCode.toUpperCase();
+  const existing = await prisma.user.findUnique({ where: { vipCode: code } });
+  if (existing) throw new Error(`Le code VIP "${code}" est déjà utilisé`);
+
+  return prisma.user.update({
+    where:  { id: userId },
+    data:   { isVip: true, vipCode: code },
+    select: { id: true, email: true, vipCode: true, isVip: true },
+  });
+}
+
+export async function updateVip(
+  userId: string,
+  data:   { vipCode?: string; isVip?: boolean },
+) {
+  if (data.vipCode) {
+    const code     = data.vipCode.toUpperCase();
+    const existing = await prisma.user.findFirst({
+      where: { vipCode: code, id: { not: userId } },
+    });
+    if (existing) throw new Error(`Le code VIP "${code}" est déjà utilisé`);
+    data.vipCode = code;
+  }
+  return prisma.user.update({
+    where:  { id: userId },
+    data:   {
+      ...(data.vipCode !== undefined && { vipCode: data.vipCode }),
+      ...(data.isVip  !== undefined && { isVip:  data.isVip  }),
+    },
+    select: { id: true, email: true, vipCode: true, isVip: true },
+  });
+}
+
+export async function revokeVip(userId: string) {
+  return prisma.user.update({
+    where:  { id: userId },
+    data:   { isVip: false, vipCode: null },
+    select: { id: true, email: true, vipCode: true, isVip: true },
+  });
+}
+
 // ── Graphique inscriptions (7 derniers jours) ─────────────────────────────────
 export async function getRegistrationChart() {
   const days = 7;

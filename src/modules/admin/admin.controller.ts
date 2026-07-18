@@ -63,3 +63,37 @@ export async function subscriptions(req: Request, res: Response): Promise<void> 
     ok(res, await svc.getSubscriptions(page, limit));
   } catch { serverError(res); }
 }
+
+// ── VIP ───────────────────────────────────────────────────────────────────────
+
+export async function listVips(_req: Request, res: Response): Promise<void> {
+  try { ok(res, await svc.listVips()); }
+  catch { serverError(res); }
+}
+
+export async function createVip(req: Request, res: Response): Promise<void> {
+  try {
+    const { userId, vipCode } = req.body as { userId?: string; vipCode?: string };
+    if (!userId || !vipCode) { badRequest(res, 'userId et vipCode requis'); return; }
+    ok(res, await svc.createVip(userId, vipCode), 'Compte VIP créé');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur création VIP');
+  }
+}
+
+export async function updateVip(req: Request, res: Response): Promise<void> {
+  try {
+    const data = req.body as { vipCode?: string; isVip?: boolean };
+    ok(res, await svc.updateVip(req.params.userId, data), 'Compte VIP mis à jour');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur mise à jour VIP');
+  }
+}
+
+export async function revokeVip(req: Request, res: Response): Promise<void> {
+  try {
+    ok(res, await svc.revokeVip(req.params.userId), 'Statut VIP révoqué');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur révocation VIP');
+  }
+}

@@ -58,9 +58,10 @@ const NO_PLAN_LIMITS = {
     prioritySupport: false,
 };
 async function getAccessStatus(userId) {
-    const [sub, profile, likesToday, superLikesToday, boostsThisMonth] = await Promise.all([
+    const [sub, profile, user, likesToday, superLikesToday, boostsThisMonth] = await Promise.all([
         (0, subscription_service_1.getCurrentSubscription)(userId),
         prisma_1.prisma.profile.findUnique({ where: { userId }, select: { isVerified: true } }),
+        prisma_1.prisma.user.findUnique({ where: { id: userId }, select: { isVip: true } }),
         prisma_1.prisma.like.count({
             where: { senderId: userId, isSuperLike: false, createdAt: { gte: startOfToday() } },
         }),
@@ -73,12 +74,14 @@ async function getAccessStatus(userId) {
     ]);
     const isActive = sub ? sub.expiresAt > new Date() && sub.fedapayStatus === 'approved' : false;
     const isVerified = profile?.isVerified ?? false;
+    const isVip = user?.isVip ?? false;
     const limits = isActive && sub ? exports.PLAN_LIMITS[sub.plan] : NO_PLAN_LIMITS;
     return {
         plan: isActive ? (sub?.plan ?? null) : null,
         isActive,
         isVerified,
         canSwipe: isActive && isVerified,
+        isVip,
         limits,
         usage: { likesToday, superLikesToday, boostsThisMonth },
     };

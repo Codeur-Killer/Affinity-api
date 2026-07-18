@@ -33,6 +33,7 @@ export interface MobilePayInput {
   phone:    string;
   network:  string;
   customer: CustomerInfo;
+  vipCode?: string;
 }
 
 export interface MobilePayResult {
@@ -42,6 +43,67 @@ export interface MobilePayResult {
   plan:          Plan;
   amount:        number;
   checkoutUrl?:  string;
+}
+
+// ── Helpers VIP ───────────────────────────────────────────────────────────────
+
+export async function validateVipCode(code: string): Promise<{
+  valid:        boolean;
+  discountPct:  number;
+  discountInfo: string;
+}> {
+  const vipUser = await prisma.user.findFirst({
+    where: { vipCode: code.toUpperCase(), isVip: true },
+    select: { id: true },
+  });
+  if (!vipUser) {
+    return { valid: false, discountPct: 0, discountInfo: 'Code VIP invalide ou inactif' };
+  }
+  return { valid: true, discountPct: 10, discountInfo: '10% de réduction appliquée' };
+}
+
+async function resolveVipCode(code?: string): Promise<{
+  vipUserId?:     string;
+  discountAmount: number;
+}> {
+  if (!code) return { discountAmount: 0 };
+  const vipUser = await prisma.user.findFirst({
+    where:  { vipCode: code.toUpperCase(), isVip: true },
+    select: { id: true },
+  });
+  return vipUser
+    ? { vipUserId: vipUser.id, discountAmount: 10 }
+    : { discountAmount: 0 };
+}
+
+async function createVipReferralIfNeeded(sub: {
+  id:          string;
+  userId:      string;
+  plan:        Plan;
+  vipCodeUsed: string | null;
+}): Promise<void> {
+  if (!sub.vipCodeUsed) return;
+
+  // Guard: don't create duplicates
+  const alreadyExists = await prisma.vipReferral.findFirst({
+    where: { subscriberUserId: sub.userId },
+  });
+  if (alreadyExists) return;
+
+  const vipUser = await prisma.user.findFirst({
+    where:  { vipCode: sub.vipCodeUsed, isVip: true },
+    select: { id: true },
+  });
+  if (!vipUser) return;
+
+  await prisma.vipReferral.create({
+    data: {
+      vipUserId:        vipUser.id,
+      subscriberUserId: sub.userId,
+      commission:       950,
+      plan:             sub.plan,
+    },
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,21 +159,34 @@ export async function activateBoost(userId: string): Promise<{ activeUntil: Date
 
 // Paiement Mobile Money — crée la transaction et retourne l'URL de checkout FedaPay
 export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayResult> {
-  const { userId, plan, phone, customer } = input;
+  const { userId, plan, phone, customer, vipCode } = input;
   const planInfo = PLANS[plan];
   if (!planInfo) throw new Error('Plan invalide');
 
   const formattedPhone = toTogoPhone(phone);
 
-  const tx    = await createFedaTransaction(planInfo, customer, formattedPhone);
+  const { vipUserId, discountAmount: discountPct } = await resolveVipCode(vipCode);
+  const finalAmount  = discountPct > 0
+    ? Math.round(planInfo.amount * (1 - discountPct / 100))
+    : planInfo.amount;
+  const discountAmt  = planInfo.amount - finalAmount;
+
+  const effectivePlanInfo = { ...planInfo, amount: finalAmount };
+  const tx    = await createFedaTransaction(effectivePlanInfo, customer, formattedPhone);
   const token = await tx.generateToken();
   const checkoutUrl: string = (token.url ?? token.token) as string;
 
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
     where:  { userId },
-    update: { plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt },
-    create: { userId, plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt },
+    update: {
+      plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt,
+      ...(vipUserId && { vipCodeUsed: vipCode!.toUpperCase(), discountAmount: discountAmt }),
+    },
+    create: {
+      userId, plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt,
+      ...(vipUserId && { vipCodeUsed: vipCode!.toUpperCase(), discountAmount: discountAmt }),
+    },
   });
 
   return {
@@ -119,7 +194,7 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
     status:        'pending',
     message:       'Complétez votre paiement sur la page FedaPay',
     plan,
-    amount:        planInfo.amount,
+    amount:        finalAmount,
     checkoutUrl,
   };
 }
@@ -150,6 +225,7 @@ export async function checkMobilePayStatus(userId: string): Promise<{
           expiresAt:     new Date(Date.now() + (PLANS[sub.plan]?.durationDays ?? 30) * 86400000),
         },
       });
+      await createVipReferralIfNeeded(sub);
     }
 
     return { status: txStatus, approved, plan: sub.plan };
@@ -163,22 +239,35 @@ export async function createCheckout(
   userId:   string,
   plan:     Plan,
   customer: CustomerInfo,
+  vipCode?: string,
 ): Promise<CheckoutResult> {
   const planInfo = PLANS[plan];
   if (!planInfo) throw new Error('Plan invalide');
 
-  const tx    = await createFedaTransaction(planInfo, customer);
+  const { vipUserId, discountAmount: discountPct } = await resolveVipCode(vipCode);
+  const finalAmount = discountPct > 0
+    ? Math.round(planInfo.amount * (1 - discountPct / 100))
+    : planInfo.amount;
+  const discountAmt = planInfo.amount - finalAmount;
+
+  const tx    = await createFedaTransaction({ ...planInfo, amount: finalAmount }, customer);
   const token = await tx.generateToken();
   const paymentUrl: string = (token.url ?? token.token) as string;
 
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
     where:  { userId },
-    update: { plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt },
-    create: { userId, plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt },
+    update: {
+      plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt,
+      ...(vipUserId && { vipCodeUsed: vipCode!.toUpperCase(), discountAmount: discountAmt }),
+    },
+    create: {
+      userId, plan, fedapayTxId: String(tx.id), fedapayStatus: 'pending', expiresAt,
+      ...(vipUserId && { vipCodeUsed: vipCode!.toUpperCase(), discountAmount: discountAmt }),
+    },
   });
 
-  return { transactionId: String(tx.id), paymentUrl, plan, amount: planInfo.amount };
+  return { transactionId: String(tx.id), paymentUrl, plan, amount: finalAmount };
 }
 
 // Vérification directe d'une transaction
@@ -207,6 +296,8 @@ export async function handleWebhook(payload: Record<string, unknown>): Promise<v
   const sub = await prisma.subscription.findFirst({ where: { fedapayTxId: String(txId) } });
   if (!sub) return;
 
+  const wasAlreadyApproved = sub.fedapayStatus === 'approved';
+
   await prisma.subscription.update({
     where: { id: sub.id },
     data:  {
@@ -216,4 +307,8 @@ export async function handleWebhook(payload: Record<string, unknown>): Promise<v
       }),
     },
   });
+
+  if (status === 'approved' && !wasAlreadyApproved) {
+    await createVipReferralIfNeeded(sub);
+  }
 }

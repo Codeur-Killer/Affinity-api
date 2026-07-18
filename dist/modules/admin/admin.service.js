@@ -7,6 +7,10 @@ exports.promoteUser = promoteUser;
 exports.getPendingVerifications = getPendingVerifications;
 exports.reviewVerification = reviewVerification;
 exports.getSubscriptions = getSubscriptions;
+exports.listVips = listVips;
+exports.createVip = createVip;
+exports.updateVip = updateVip;
+exports.revokeVip = revokeVip;
 exports.getRegistrationChart = getRegistrationChart;
 const prisma_1 = require("../../config/prisma");
 // ── Statistiques globales ──────────────────────────────────────────────────────
@@ -154,6 +158,72 @@ async function getSubscriptions(page = 1, limit = 20) {
         subscriptions: subs,
         pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
+}
+// ── Gestion des VIP ───────────────────────────────────────────────────────────
+async function listVips() {
+    const vips = await prisma_1.prisma.user.findMany({
+        where: { isVip: true },
+        select: {
+            id: true,
+            email: true,
+            phone: true,
+            vipCode: true,
+            createdAt: true,
+            profile: { select: { firstName: true, lastName: true } },
+            vipCommissions: {
+                select: { commission: true, createdAt: true },
+            },
+        },
+        orderBy: { createdAt: 'desc' },
+    });
+    return vips.map((u) => ({
+        id: u.id,
+        email: u.email,
+        phone: u.phone,
+        vipCode: u.vipCode,
+        firstName: u.profile?.firstName,
+        lastName: u.profile?.lastName,
+        createdAt: u.createdAt,
+        totalReferrals: u.vipCommissions.length,
+        totalCommissions: u.vipCommissions.reduce((s, r) => s + r.commission, 0),
+    }));
+}
+async function createVip(userId, vipCode) {
+    const code = vipCode.toUpperCase();
+    const existing = await prisma_1.prisma.user.findUnique({ where: { vipCode: code } });
+    if (existing)
+        throw new Error(`Le code VIP "${code}" est déjà utilisé`);
+    return prisma_1.prisma.user.update({
+        where: { id: userId },
+        data: { isVip: true, vipCode: code },
+        select: { id: true, email: true, vipCode: true, isVip: true },
+    });
+}
+async function updateVip(userId, data) {
+    if (data.vipCode) {
+        const code = data.vipCode.toUpperCase();
+        const existing = await prisma_1.prisma.user.findFirst({
+            where: { vipCode: code, id: { not: userId } },
+        });
+        if (existing)
+            throw new Error(`Le code VIP "${code}" est déjà utilisé`);
+        data.vipCode = code;
+    }
+    return prisma_1.prisma.user.update({
+        where: { id: userId },
+        data: {
+            ...(data.vipCode !== undefined && { vipCode: data.vipCode }),
+            ...(data.isVip !== undefined && { isVip: data.isVip }),
+        },
+        select: { id: true, email: true, vipCode: true, isVip: true },
+    });
+}
+async function revokeVip(userId) {
+    return prisma_1.prisma.user.update({
+        where: { id: userId },
+        data: { isVip: false, vipCode: null },
+        select: { id: true, email: true, vipCode: true, isVip: true },
+    });
 }
 // ── Graphique inscriptions (7 derniers jours) ─────────────────────────────────
 async function getRegistrationChart() {

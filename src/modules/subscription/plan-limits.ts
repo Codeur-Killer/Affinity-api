@@ -51,6 +51,7 @@ export interface AccessStatus {
   isActive: boolean;
   isVerified: boolean;
   canSwipe: boolean;
+  isVip: boolean;
   limits: PlanLimits;
   usage: {
     likesToday: number;
@@ -84,9 +85,10 @@ const NO_PLAN_LIMITS: PlanLimits = {
 };
 
 export async function getAccessStatus(userId: string): Promise<AccessStatus> {
-  const [sub, profile, likesToday, superLikesToday, boostsThisMonth] = await Promise.all([
+  const [sub, profile, user, likesToday, superLikesToday, boostsThisMonth] = await Promise.all([
     getCurrentSubscription(userId),
     prisma.profile.findUnique({ where: { userId }, select: { isVerified: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { isVip: true } }),
     prisma.like.count({
       where: { senderId: userId, isSuperLike: false, createdAt: { gte: startOfToday() } },
     }),
@@ -98,15 +100,17 @@ export async function getAccessStatus(userId: string): Promise<AccessStatus> {
     }),
   ]);
 
-  const isActive = sub ? sub.expiresAt > new Date() && sub.fedapayStatus === 'approved' : false;
+  const isActive   = sub ? sub.expiresAt > new Date() && sub.fedapayStatus === 'approved' : false;
   const isVerified = profile?.isVerified ?? false;
-  const limits = isActive && sub ? PLAN_LIMITS[sub.plan] : NO_PLAN_LIMITS;
+  const isVip      = user?.isVip ?? false;
+  const limits     = isActive && sub ? PLAN_LIMITS[sub.plan] : NO_PLAN_LIMITS;
 
   return {
     plan: isActive ? (sub?.plan ?? null) : null,
     isActive,
     isVerified,
     canSwipe: isActive && isVerified,
+    isVip,
     limits,
     usage: { likesToday, superLikesToday, boostsThisMonth },
   };

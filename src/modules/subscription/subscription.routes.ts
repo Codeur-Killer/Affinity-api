@@ -9,6 +9,7 @@ import {
   boost,
   getPlans,
   devConfirm,
+  validateCode,
 } from './subscription.controller';
 import { authenticate } from '../../middleware/auth.middleware';
 
@@ -22,6 +23,7 @@ router.get('/plans', getPlans); // public — sans auth
 router.use(authenticate);
 
 router.get('/',               getSubscription);
+router.get('/validate-code',  validateCode);   // validation code VIP (auth requis)
 router.post('/checkout',      checkout);         // checkout web (fallback)
 router.post('/mobile-pay',    mobilePay);        // paiement Mobile Money direct
 router.get('/mobile-status',  mobilePayStatus);  // polling statut

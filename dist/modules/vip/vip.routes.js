@@ -35,22 +35,10 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_middleware_1 = require("../../middleware/auth.middleware");
-const admin_middleware_1 = require("../../middleware/admin.middleware");
-const ctrl = __importStar(require("./admin.controller"));
+const vip_middleware_1 = require("../../middleware/vip.middleware");
+const ctrl = __importStar(require("./vip.controller"));
 const router = (0, express_1.Router)();
-// Toutes les routes admin nécessitent d'être authentifié ET admin
-router.use(auth_middleware_1.authenticate, admin_middleware_1.requireAdmin);
-router.get('/stats', ctrl.stats);
-router.get('/chart/registrations', ctrl.chart);
-router.get('/users', ctrl.users);
-router.patch('/users/:userId/ban', ctrl.banUser);
-router.patch('/users/:userId/promote', ctrl.promoteUser);
-router.get('/verifications', ctrl.verifications);
-router.patch('/verifications/:userId/review', ctrl.reviewVerification);
-router.get('/subscriptions', ctrl.subscriptions);
-router.get('/vip', ctrl.listVips);
-router.post('/vip', ctrl.createVip);
-router.put('/vip/:userId', ctrl.updateVip);
-router.delete('/vip/:userId', ctrl.revokeVip);
+router.use(auth_middleware_1.authenticate, vip_middleware_1.requireVip);
+router.get('/dashboard', ctrl.dashboard);
 exports.default = router;
-//# sourceMappingURL=admin.routes.js.map
+//# sourceMappingURL=vip.routes.js.map

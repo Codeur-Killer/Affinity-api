@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSubscription = getSubscription;
 exports.boost = boost;
 exports.checkout = checkout;
+exports.validateCode = validateCode;
 exports.mobilePay = mobilePay;
 exports.mobilePayStatus = mobilePayStatus;
 exports.webhook = webhook;
@@ -45,6 +46,7 @@ async function getSubscription(req, res) {
             plan: access.plan,
             isVerified: access.isVerified,
             canSwipe: access.canSwipe,
+            isVip: access.isVip,
             limits: access.limits,
             usage: access.usage,
         });
@@ -74,7 +76,7 @@ async function boost(req, res) {
 }
 async function checkout(req, res) {
     try {
-        const { plan } = req.body;
+        const { plan, vipCode } = req.body;
         if (!VALID_PLANS.includes(plan)) {
             (0, response_1.badRequest)(res, `Plan invalide. Valeurs : ${VALID_PLANS.join(', ')}`);
             return;
@@ -91,7 +93,7 @@ async function checkout(req, res) {
             firstname: user.profile?.firstName ?? 'Utilisateur',
             lastname: user.profile?.lastName ?? 'Affinity',
         };
-        const result = await (0, subscription_service_1.createCheckout)(req.user.id, plan, customer);
+        const result = await (0, subscription_service_1.createCheckout)(req.user.id, plan, customer, vipCode);
         (0, response_1.ok)(res, result, 'Lien de paiement créé');
     }
     catch (err) {
@@ -99,9 +101,22 @@ async function checkout(req, res) {
     }
 }
 // ── Paiement Mobile Money direct (T-Money / Flooz) ──────────────────────────
+async function validateCode(req, res) {
+    try {
+        const code = (req.query.code ?? '').trim().toUpperCase();
+        if (!code) {
+            (0, response_1.badRequest)(res, 'code requis');
+            return;
+        }
+        (0, response_1.ok)(res, await (0, subscription_service_1.validateVipCode)(code));
+    }
+    catch (e) {
+        (0, response_1.badRequest)(res, e instanceof Error ? e.message : 'Code invalide');
+    }
+}
 async function mobilePay(req, res) {
     try {
-        const { plan, phone, network } = req.body;
+        const { plan, phone, network, vipCode } = req.body;
         if (!VALID_PLANS.includes(plan)) {
             (0, response_1.badRequest)(res, `Plan invalide. Valeurs : ${VALID_PLANS.join(', ')}`);
             return;
@@ -126,6 +141,7 @@ async function mobilePay(req, res) {
             plan: plan,
             phone,
             network,
+            vipCode,
             customer: {
                 email: user.email ?? `user_${user.id}@affinity.app`,
                 firstname: user.profile?.firstName ?? 'Utilisateur',

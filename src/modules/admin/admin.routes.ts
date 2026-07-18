@@ -17,4 +17,9 @@ router.get('/verifications',                  ctrl.verifications);
 router.patch('/verifications/:userId/review', ctrl.reviewVerification);
 router.get('/subscriptions',                  ctrl.subscriptions);
 
+router.get('/vip',              ctrl.listVips);
+router.post('/vip',             ctrl.createVip);
+router.put('/vip/:userId',      ctrl.updateVip);
+router.delete('/vip/:userId',   ctrl.revokeVip);
+
 export default router;

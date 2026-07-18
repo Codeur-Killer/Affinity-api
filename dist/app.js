@@ -20,6 +20,7 @@ const subscription_routes_1 = __importDefault(require("./modules/subscription/su
 const verification_routes_1 = __importDefault(require("./modules/verification/verification.routes"));
 const settings_routes_1 = __importDefault(require("./modules/settings/settings.routes"));
 const admin_routes_1 = __importDefault(require("./modules/admin/admin.routes"));
+const vip_routes_1 = __importDefault(require("./modules/vip/vip.routes"));
 const referral_routes_1 = __importDefault(require("./modules/referral/referral.routes"));
 const blocks_routes_1 = __importDefault(require("./modules/blocks/blocks.routes"));
 const app = (0, express_1.default)();
@@ -102,6 +103,7 @@ app.use('/api/subscription', subscription_routes_1.default);
 app.use('/api/verification', verification_routes_1.default);
 app.use('/api/settings', settings_routes_1.default);
 app.use('/api/admin', admin_routes_1.default);
+app.use('/api/vip', vip_routes_1.default);
 app.use('/api/referral', referral_routes_1.default);
 app.use('/api/blocks', blocks_routes_1.default);
 // ─── Gestion des erreurs ───────────────────────────────
