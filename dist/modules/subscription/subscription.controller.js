@@ -15,6 +15,26 @@ const response_1 = require("../../utils/response");
 const prisma_1 = require("../../config/prisma");
 const env_1 = require("../../config/env");
 const VALID_PLANS = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
+// FedaPay ApiConnectionError n'étend pas Error — extraire le vrai message
+function fedaMsg(err, fallback) {
+    if (err instanceof Error)
+        return err.message;
+    if (err && typeof err === 'object') {
+        const e = err;
+        // Erreurs de validation FedaPay : { errors: { field: ['msg'] } }
+        if (e['errors'] && typeof e['errors'] === 'object') {
+            const errs = e['errors'];
+            const first = Object.values(errs)[0];
+            if (Array.isArray(first) && first[0])
+                return first[0];
+        }
+        if (typeof e['errorMessage'] === 'string' && e['errorMessage'])
+            return e['errorMessage'];
+        if (typeof e['message'] === 'string' && e['message'])
+            return e['message'];
+    }
+    return fallback;
+}
 async function getSubscription(req, res) {
     try {
         const sub = await (0, subscription_service_1.getCurrentSubscription)(req.user.id);
@@ -75,7 +95,7 @@ async function checkout(req, res) {
         (0, response_1.ok)(res, result, 'Lien de paiement créé');
     }
     catch (err) {
-        (0, response_1.serverError)(res, err instanceof Error ? err.message : 'Erreur paiement');
+        (0, response_1.serverError)(res, fedaMsg(err, 'Erreur création checkout'));
     }
 }
 // ── Paiement Mobile Money direct (T-Money / Flooz) ──────────────────────────
@@ -115,8 +135,7 @@ async function mobilePay(req, res) {
         (0, response_1.ok)(res, result, result.message);
     }
     catch (err) {
-        const msg = err instanceof Error ? err.message : 'Erreur paiement mobile';
-        (0, response_1.serverError)(res, msg);
+        (0, response_1.serverError)(res, fedaMsg(err, 'Erreur paiement mobile'));
     }
 }
 // ── Vérification statut (polling depuis Flutter) ─────────────────────────────

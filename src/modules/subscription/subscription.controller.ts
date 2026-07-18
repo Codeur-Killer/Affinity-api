@@ -16,6 +16,23 @@ import { env } from '../../config/env';
 
 const VALID_PLANS: Plan[] = ['DECOUVERTE', 'STANDARD', 'PREMIUM'];
 
+// FedaPay ApiConnectionError n'étend pas Error — extraire le vrai message
+function fedaMsg(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    // Erreurs de validation FedaPay : { errors: { field: ['msg'] } }
+    if (e['errors'] && typeof e['errors'] === 'object') {
+      const errs = e['errors'] as Record<string, string[]>;
+      const first = Object.values(errs)[0];
+      if (Array.isArray(first) && first[0]) return first[0];
+    }
+    if (typeof e['errorMessage'] === 'string' && e['errorMessage']) return e['errorMessage'];
+    if (typeof e['message']      === 'string' && e['message'])      return e['message'];
+  }
+  return fallback;
+}
+
 export async function getSubscription(req: Request, res: Response): Promise<void> {
   try {
     const sub    = await getCurrentSubscription(req.user!.id);
@@ -69,7 +86,7 @@ export async function checkout(req: Request, res: Response): Promise<void> {
     const result = await createCheckout(req.user!.id, plan as Plan, customer);
     ok(res, result, 'Lien de paiement créé');
   } catch (err: unknown) {
-    serverError(res, err instanceof Error ? err.message : 'Erreur paiement');
+    serverError(res, fedaMsg(err, 'Erreur création checkout'));
   }
 }
 
@@ -114,8 +131,7 @@ export async function mobilePay(req: Request, res: Response): Promise<void> {
 
     ok(res, result, result.message);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Erreur paiement mobile';
-    serverError(res, msg);
+    serverError(res, fedaMsg(err, 'Erreur paiement mobile'));
   }
 }
 

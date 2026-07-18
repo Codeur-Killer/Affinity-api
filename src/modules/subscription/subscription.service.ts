@@ -1,13 +1,7 @@
+import { FedaPay, Transaction as FedaTx } from 'fedapay';
 import { prisma }             from '../../config/prisma';
 import { env }               from '../../config/env';
 import { Subscription, Plan } from '@prisma/client';
-
-// ── SDK FedaPay (CommonJS) ────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { FedaPay, Transaction: FedaTx } = require('fedapay') as {
-  FedaPay:     { setApiKey(k: string): void; setEnvironment(e: string): void };
-  Transaction: { create(d: object): Promise<any>; retrieve(id: number): Promise<any> };
-};
 
 // Détecter live vs sandbox depuis le préfixe de la clé (indépendant de NODE_ENV)
 const fedaEnv = env.FEDAPAY_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'sandbox';
@@ -62,20 +56,29 @@ async function createFedaTransaction(
   planInfo: { label: string; amount: number },
   customer: CustomerInfo,
   phone?: string,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
-  return FedaTx.create({
-    description:  `Affinity ${planInfo.label} — 30 jours`,
-    amount:       planInfo.amount,
-    currency:     { iso: 'XOF' },
-    callback_url: `${env.API_URL}/api/subscription/webhook`,
-    customer: {
-      firstname: customer.firstname,
-      lastname:  customer.lastname,
-      email:     customer.email,
-      ...(phone ? { phone_number: { number: phone, country: 'TG' } } : {}),
-    },
-  });
+): Promise<FedaTx> {
+  try {
+    return await FedaTx.create({
+      description:  `Affinity ${planInfo.label} — 30 jours`,
+      amount:       planInfo.amount,
+      currency:     { iso: 'XOF' },
+      callback_url: `${env.API_URL}/api/subscription/webhook`,
+      customer: {
+        firstname: customer.firstname,
+        lastname:  customer.lastname,
+        email:     customer.email,
+        ...(phone ? { phone_number: { number: phone, country: 'TG' } } : {}),
+      },
+    });
+  } catch (err: unknown) {
+    const e = err as Record<string, unknown>;
+    console.error('[FedaPay] Erreur création transaction:',
+      'status=', e['httpStatus'],
+      '| msg=',   e['errorMessage'] ?? e['message'],
+      '| errors=', JSON.stringify(e['errors'] ?? {}),
+    );
+    throw err;
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -101,10 +104,8 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
   const formattedPhone = toTogoPhone(phone);
 
   const tx    = await createFedaTransaction(planInfo, customer, formattedPhone);
-  // generateToken() retourne { token, url } — le SDK gère la bonne URL live/sandbox
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const token = await (tx as any).generateToken();
-  const checkoutUrl: string = token.url ?? token.token;
+  const token = await tx.generateToken();
+  const checkoutUrl: string = (token.url ?? token.token) as string;
 
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
@@ -167,9 +168,8 @@ export async function createCheckout(
   if (!planInfo) throw new Error('Plan invalide');
 
   const tx    = await createFedaTransaction(planInfo, customer);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const token = await (tx as any).generateToken();
-  const paymentUrl: string = token.url ?? token.token;
+  const token = await tx.generateToken();
+  const paymentUrl: string = (token.url ?? token.token) as string;
 
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
