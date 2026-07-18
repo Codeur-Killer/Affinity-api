@@ -1,7 +1,4 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCurrentSubscription = getCurrentSubscription;
 exports.activateBoost = activateBoost;
@@ -10,34 +7,29 @@ exports.checkMobilePayStatus = checkMobilePayStatus;
 exports.createCheckout = createCheckout;
 exports.verifyTransaction = verifyTransaction;
 exports.handleWebhook = handleWebhook;
-const axios_1 = __importDefault(require("axios"));
 const prisma_1 = require("../../config/prisma");
 const env_1 = require("../../config/env");
+// ── SDK FedaPay (CommonJS) ────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { FedaPay, Transaction: FedaTx } = require('fedapay');
+// Détecter live vs sandbox depuis le préfixe de la clé (indépendant de NODE_ENV)
+const fedaEnv = env_1.env.FEDAPAY_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'sandbox';
+FedaPay.setApiKey(env_1.env.FEDAPAY_SECRET_KEY);
+FedaPay.setEnvironment(fedaEnv);
 // ── Config plans ──────────────────────────────────────────────────────────────
 const PLANS = {
     DECOUVERTE: { label: 'Découverte', amount: env_1.env.PLAN_PRICE_DECOUVERTE, durationDays: 30 },
     STANDARD: { label: 'Standard', amount: env_1.env.PLAN_PRICE_STANDARD, durationDays: 30 },
     PREMIUM: { label: 'Premium', amount: env_1.env.PLAN_PRICE_PREMIUM, durationDays: 30 },
 };
-// ── Client HTTP FedaPay ───────────────────────────────────────────────────────
-const fedapay = axios_1.default.create({
-    baseURL: env_1.env.IS_PROD
-        ? 'https://api.fedapay.com/v1'
-        : 'https://sandbox-api.fedapay.com/v1',
-    headers: {
-        Authorization: `Bearer ${env_1.env.FEDAPAY_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-    },
-    timeout: 30000,
-});
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function toTogoPhone(raw) {
     const digits = raw.replace(/\D/g, '');
     const local = digits.startsWith('228') ? digits.slice(3) : digits;
     return `+228${local}`;
 }
-async function createTransaction(planInfo, customer, phone) {
-    const body = {
+async function createFedaTransaction(planInfo, customer, phone) {
+    return FedaTx.create({
         description: `Affinity ${planInfo.label} — 30 jours`,
         amount: planInfo.amount,
         currency: { iso: 'XOF' },
@@ -48,13 +40,7 @@ async function createTransaction(planInfo, customer, phone) {
             email: customer.email,
             ...(phone ? { phone_number: { number: phone, country: 'TG' } } : {}),
         },
-    };
-    const resp = await fedapay.post('/transactions', body);
-    return resp.data['v1/transaction'];
-}
-async function fetchTransaction(id) {
-    const resp = await fedapay.get(`/transactions/${id}`);
-    return resp.data['v1/transaction'];
+    });
 }
 // ── Public API ────────────────────────────────────────────────────────────────
 async function getCurrentSubscription(userId) {
@@ -66,18 +52,18 @@ async function activateBoost(userId) {
     await prisma_1.prisma.boost.create({ data: { userId, expiresAt } });
     return { activeUntil: expiresAt };
 }
-// Paiement Mobile Money — crée la transaction FedaPay et retourne l'URL de paiement hébergée
+// Paiement Mobile Money — crée la transaction et retourne l'URL de checkout FedaPay
 async function payMobileMoney(input) {
     const { userId, plan, phone, customer } = input;
     const planInfo = PLANS[plan];
     if (!planInfo)
         throw new Error('Plan invalide');
     const formattedPhone = toTogoPhone(phone);
-    // Créer la transaction avec le numéro de téléphone (pré-rempli sur la page FedaPay)
-    const tx = await createTransaction(planInfo, customer, formattedPhone);
-    // Générer l'URL de paiement hébergée (FedaPay ne propose pas de USSD push via REST)
-    const tokenResp = await fedapay.get(`/transactions/${tx.id}/token`);
-    const checkoutUrl = tokenResp.data.url;
+    const tx = await createFedaTransaction(planInfo, customer, formattedPhone);
+    // generateToken() retourne { token, url } — le SDK gère la bonne URL live/sandbox
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const token = await tx.generateToken();
+    const checkoutUrl = token.url ?? token.token;
     const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
     await prisma_1.prisma.subscription.upsert({
         where: { userId },
@@ -102,8 +88,9 @@ async function checkMobilePayStatus(userId) {
         return { status: 'approved', approved: true, plan: sub.plan };
     }
     try {
-        const tx = await fetchTransaction(sub.fedapayTxId);
-        const approved = tx.status === 'approved';
+        const tx = await FedaTx.retrieve(Number(sub.fedapayTxId));
+        const txStatus = String(tx.status ?? '');
+        const approved = txStatus === 'approved';
         if (approved) {
             await prisma_1.prisma.subscription.update({
                 where: { id: sub.id },
@@ -113,7 +100,7 @@ async function checkMobilePayStatus(userId) {
                 },
             });
         }
-        return { status: tx.status, approved, plan: sub.plan };
+        return { status: txStatus, approved, plan: sub.plan };
     }
     catch {
         return { status: sub.fedapayStatus ?? 'pending', approved: false, plan: sub.plan };
@@ -124,10 +111,10 @@ async function createCheckout(userId, plan, customer) {
     const planInfo = PLANS[plan];
     if (!planInfo)
         throw new Error('Plan invalide');
-    const tx = await createTransaction(planInfo, customer);
-    // Générer le token de la page de paiement hébergée
-    const tokenResp = await fedapay.get(`/transactions/${tx.id}/token`);
-    const paymentUrl = tokenResp.data.url;
+    const tx = await createFedaTransaction(planInfo, customer);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const token = await tx.generateToken();
+    const paymentUrl = token.url ?? token.token;
     const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
     await prisma_1.prisma.subscription.upsert({
         where: { userId },
@@ -136,12 +123,13 @@ async function createCheckout(userId, plan, customer) {
     });
     return { transactionId: String(tx.id), paymentUrl, plan, amount: planInfo.amount };
 }
-// Vérification directe d'une transaction par son ID
+// Vérification directe d'une transaction
 async function verifyTransaction(txId) {
-    const tx = await fetchTransaction(txId);
-    return { status: tx.status, approved: tx.status === 'approved' };
+    const tx = await FedaTx.retrieve(Number(txId));
+    const status = String(tx.status ?? '');
+    return { status, approved: status === 'approved' };
 }
-// Webhook FedaPay (callback_url) — activé à chaque changement de statut
+// Webhook FedaPay — appelé à chaque changement de statut
 async function handleWebhook(payload) {
     const event = payload;
     if (event.name !== 'transaction.updated')
