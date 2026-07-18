@@ -113,7 +113,7 @@ export async function activateBoost(userId: string): Promise<{ activeUntil: Date
   return { activeUntil: expiresAt };
 }
 
-// Paiement Mobile Money direct — envoie une demande USSD push (T-Money / Flooz)
+// Paiement Mobile Money — crée la transaction FedaPay et retourne l'URL de paiement hébergée
 export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayResult> {
   const { userId, plan, phone, customer } = input;
   const planInfo = PLANS[plan];
@@ -121,12 +121,12 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
 
   const formattedPhone = toTogoPhone(phone);
 
+  // Créer la transaction avec le numéro de téléphone (pré-rempli sur la page FedaPay)
   const tx = await createTransaction(planInfo, customer, formattedPhone);
 
-  // Déclencher le débit USSD sur le téléphone du client
-  await fedapay.post(`/transactions/${tx.id}/pay`, {
-    phone_number: { number: formattedPhone, country: 'TG' },
-  });
+  // Générer l'URL de paiement hébergée (FedaPay ne propose pas de USSD push via REST)
+  const tokenResp = await fedapay.get<FedaToken>(`/transactions/${tx.id}/token`);
+  const checkoutUrl = tokenResp.data.url;
 
   const expiresAt = new Date(Date.now() + planInfo.durationDays * 86400000);
   await prisma.subscription.upsert({
@@ -138,9 +138,10 @@ export async function payMobileMoney(input: MobilePayInput): Promise<MobilePayRe
   return {
     transactionId: String(tx.id),
     status:        'pending',
-    message:       'Confirmez le paiement sur votre téléphone (notification USSD)',
+    message:       'Complétez votre paiement sur la page FedaPay',
     plan,
     amount:        planInfo.amount,
+    checkoutUrl,
   };
 }
 
