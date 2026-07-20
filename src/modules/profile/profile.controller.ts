@@ -11,6 +11,8 @@ import {
 import { uploadFileToCloud } from '../../middleware/upload.middleware';
 import { deleteFromCloudinary } from '../../config/cloudinary';
 import { ok, created, notFound, badRequest, serverError } from '../../utils/response';
+import { prisma } from '../../config/prisma';
+import { sendFirestorePushNotification } from '../../utils/firestore';
 
 export async function completeProfile(req: Request, res: Response): Promise<void> {
   try {
@@ -102,5 +104,43 @@ export async function patchLocation(req: Request, res: Response): Promise<void> 
     };
     await updateLocation(req.user!.id, latitude, longitude, city);
     ok(res, null, 'Localisation mise à jour');
+  } catch { serverError(res); }
+}
+
+export async function visitProfile(req: Request, res: Response): Promise<void> {
+  try {
+    const visitorId  = req.user!.id;
+    const profileOwnerId = req.params.userId;
+
+    if (visitorId === profileOwnerId) { ok(res, null); return; }
+
+    const [visitor, ownerSettings] = await Promise.all([
+      prisma.profile.findUnique({ where: { userId: visitorId }, select: { firstName: true } }),
+      prisma.userSettings.findUnique({ where: { userId: profileOwnerId } }),
+    ]);
+
+    if (ownerSettings?.notifVisits !== false) {
+      const visitorName = visitor?.firstName ?? 'Quelqu\'un';
+      await prisma.notification.create({
+        data: {
+          userId: profileOwnerId,
+          type:   'VISIT',
+          title:  `👀 ${visitorName} a visité votre profil`,
+          body:   'Découvrez qui s\'intéresse à vous',
+          data:   { visitorId },
+        },
+      });
+
+      if (ownerSettings?.fcmToken) {
+        sendFirestorePushNotification(
+          ownerSettings.fcmToken,
+          `👀 ${visitorName} a visité votre profil`,
+          'Découvrez qui s\'intéresse à vous',
+          { type: 'VISIT', visitorId },
+        ).catch(() => {});
+      }
+    }
+
+    ok(res, null);
   } catch { serverError(res); }
 }

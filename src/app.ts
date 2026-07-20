@@ -48,7 +48,7 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// Rate limiter strict pour les envois OTP (5 par téléphone par heure)
+// OTP : 5 envois max par téléphone par heure
 const otpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -58,6 +58,30 @@ const otpLimiter = rateLimit({
   message: { success: false, message: 'Trop de demandes OTP. Réessayez dans 1 heure.' },
 });
 app.use('/api/auth/otp/send', otpLimiter);
+
+// Swipes : 120 likes et 120 passes par heure par IP/utilisateur (anti-bot)
+const swipeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 120,
+  keyGenerator: (req) => req.ip || 'unknown',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Trop de swipes. Réessayez dans 1 heure.' },
+});
+app.use('/api/discovery/like', swipeLimiter);
+app.use('/api/discovery/pass', swipeLimiter);
+
+// Paiements : 10 tentatives par heure par IP (anti-abus)
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.ip || 'unknown',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Trop de tentatives de paiement. Réessayez dans 1 heure.' },
+});
+app.use('/api/subscription/mobile-pay', paymentLimiter);
+app.use('/api/subscription/checkout',   paymentLimiter);
 
 // ─── Parsing ───────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));

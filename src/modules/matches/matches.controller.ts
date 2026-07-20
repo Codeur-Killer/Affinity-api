@@ -4,8 +4,9 @@ import { ok, notFound, forbidden, serverError } from '../../utils/response';
 
 export async function list(req: Request, res: Response): Promise<void> {
   try {
-    const matches = await getMyMatches(req.user!.id);
-    ok(res, { matches, count: matches.length });
+    const page   = req.query.page ? Number(req.query.page) : 1;
+    const result = await getMyMatches(req.user!.id, page);
+    ok(res, result);
   } catch {
     serverError(res);
   }

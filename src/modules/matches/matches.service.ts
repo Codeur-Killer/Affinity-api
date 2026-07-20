@@ -1,29 +1,35 @@
 import { prisma } from '../../config/prisma';
 
-export async function getMyMatches(userId: string) {
-  const matches = await prisma.match.findMany({
-    where: {
-      OR: [{ user1Id: userId }, { user2Id: userId }],
-    },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      user1: { include: { profile: true } },
-      user2: { include: { profile: true } },
-    },
-  });
+const MATCHES_PAGE_SIZE = 30;
 
-  return matches.map((m) => {
+export async function getMyMatches(userId: string, page = 1) {
+  const skip = (page - 1) * MATCHES_PAGE_SIZE;
+  const where = { OR: [{ user1Id: userId }, { user2Id: userId }] };
+  const [matches, total] = await Promise.all([
+    prisma.match.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: MATCHES_PAGE_SIZE,
+      include: {
+        user1: { include: { profile: true } },
+        user2: { include: { profile: true } },
+      },
+    }),
+    prisma.match.count({ where }),
+  ]);
+
+  const data = matches.map((m) => {
     const other = m.user1Id === userId ? m.user2 : m.user1;
     return {
       matchId: m.id,
       conversationId: m.conversationId,
       createdAt: m.createdAt,
-      user: {
-        id: other.id,
-        profile: other.profile,
-      },
+      user: { id: other.id, profile: other.profile },
     };
   });
+
+  return { matches: data, total, page, hasMore: skip + matches.length < total };
 }
 
 export async function getMatchById(matchId: string, userId: string) {

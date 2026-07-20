@@ -4,7 +4,7 @@ import {
   createFirestoreConversation,
   sendFirestorePushNotification,
 } from '../../utils/firestore';
-import { getAccessStatus } from '../subscription/plan-limits';
+import { getAccessStatus, invalidateAccessCache } from '../subscription/plan-limits';
 
 const CANDIDATES_LIMIT = 20;
 
@@ -85,6 +85,16 @@ export async function getCandidates(
       ? { gender: genderPref as 'MALE' | 'FEMALE' | 'OTHER' }
       : undefined;
 
+  // Filtre par tranche d'âge (minAge/maxAge → birthdate)
+  const now = new Date();
+  const birthdateFilter: Record<string, Date> = {};
+  if (filters.maxAge) {
+    birthdateFilter['gte'] = new Date(now.getFullYear() - filters.maxAge, now.getMonth(), now.getDate());
+  }
+  if (filters.minAge) {
+    birthdateFilter['lte'] = new Date(now.getFullYear() - filters.minAge, now.getMonth(), now.getDate());
+  }
+
   const candidates = await prisma.profile.findMany({
     where: {
       userId:     { notIn: Array.from(excludedIds) },
@@ -92,6 +102,7 @@ export async function getCandidates(
       incognito:  false,
       lastSeenAt: { gte: thirtyDaysAgo },
       ...genderFilter,
+      ...(Object.keys(birthdateFilter).length > 0 && { birthdate: birthdateFilter }),
     },
     take: CANDIDATES_LIMIT * 3,
   });
@@ -279,30 +290,13 @@ export async function likeUser(
       data: { user1Id: senderId, user2Id: receiverId },
     });
 
-    let conversationId: string | undefined;
-    try {
-      // Utiliser les Firebase UIDs pour que les règles Firestore fonctionnent
-      // (request.auth.uid dans Firestore = Firebase UID, pas le UUID PostgreSQL)
-      const [u1, u2] = await Promise.all([
-        prisma.user.findUnique({ where: { id: senderId },   select: { firebaseUid: true } }),
-        prisma.user.findUnique({ where: { id: receiverId }, select: { firebaseUid: true } }),
-      ]);
-      const fbUid1 = u1?.firebaseUid ?? senderId;
-      const fbUid2 = u2?.firebaseUid ?? receiverId;
-
-      conversationId = await createFirestoreConversation(match.id, fbUid1, fbUid2);
-      await prisma.match.update({
-        where: { id: match.id },
-        data:  { conversationId },
-      });
-    } catch (e) {
-      console.error('[Firestore] Erreur création conversation:', e);
-    }
+    // Invalider le cache d'accès (quota de likes a changé)
+    invalidateAccessCache(senderId);
 
     const senderName   = senderProfile?.firstName ?? 'Quelqu\'un';
     const receiverName = (await prisma.profile.findUnique({ where: { userId: receiverId } }))?.firstName ?? 'Votre match';
 
-    // Notifier les deux utilisateurs
+    // Notifications en base (synchrones — légères)
     await Promise.all([
       prisma.notification.create({
         data: {
@@ -310,7 +304,7 @@ export async function likeUser(
           type:   'MATCH',
           title:  `🎉 Match avec ${receiverName} !`,
           body:   'C\'est un match ! Démarrez la conversation.',
-          data:   { matchId: match.id, conversationId },
+          data:   { matchId: match.id },
         },
       }),
       prisma.notification.create({
@@ -319,33 +313,43 @@ export async function likeUser(
           type:   'MATCH',
           title:  `🎉 Match avec ${senderName} !`,
           body:   'C\'est un match ! Démarrez la conversation.',
-          data:   { matchId: match.id, conversationId },
+          data:   { matchId: match.id },
         },
       }),
     ]);
 
-    // Push FCM aux deux
-    const senderUser = await prisma.user.findUnique({
-      where:   { id: senderId },
-      include: { settings: true },
-    });
-    const pushTargets = [
-      { token: receiver.settings?.fcmToken, name: senderName },
-      { token: senderUser?.settings?.fcmToken, name: receiverName },
-    ];
-    for (const { token, name } of pushTargets) {
-      if (token) {
-        sendFirestorePushNotification(
-          token,
-          '🎉 C\'est un match !',
-          `Vous avez matché avec ${name}`,
-          { type: 'MATCH', matchId: match.id },
-        ).catch(() => {});
+    // Firestore + FCM en arrière-plan (fire-and-forget — ne bloque pas la réponse HTTP)
+    Promise.resolve().then(async () => {
+      try {
+        const [u1, u2] = await Promise.all([
+          prisma.user.findUnique({ where: { id: senderId },   select: { firebaseUid: true } }),
+          prisma.user.findUnique({ where: { id: receiverId }, select: { firebaseUid: true } }),
+        ]);
+        const conversationId = await createFirestoreConversation(
+          match.id,
+          u1?.firebaseUid ?? senderId,
+          u2?.firebaseUid ?? receiverId,
+        );
+        await prisma.match.update({ where: { id: match.id }, data: { conversationId } });
+      } catch (e) {
+        console.error('[Firestore] conversation:', e);
       }
-    }
+      const senderUser = await prisma.user.findUnique({ where: { id: senderId }, include: { settings: true } });
+      for (const [token, name] of [
+        [receiver.settings?.fcmToken, senderName],
+        [senderUser?.settings?.fcmToken, receiverName],
+      ] as [string | undefined, string][]) {
+        if (token) {
+          sendFirestorePushNotification(token, '🎉 C\'est un match !', `Vous avez matché avec ${name}`, { type: 'MATCH', matchId: match.id }).catch(() => {});
+        }
+      }
+    }).catch(() => {});
 
-    return { liked: true, isMatch: true, matchId: match.id, conversationId };
+    return { liked: true, isMatch: true, matchId: match.id, conversationId: undefined };
   }
+
+  // Invalider le cache (quota de likes a changé)
+  invalidateAccessCache(senderId);
 
   // ── Pas encore de like mutuel → envoyer notification à B ────────────────────
   const senderName = senderProfile?.firstName ?? 'Quelqu\'un';
@@ -370,6 +374,30 @@ export async function likeUser(
   }
 
   return { liked: true, isMatch: false };
+}
+
+// ── Supprimer un pass (pour le bouton Undo) ───────────────────────────────────
+export async function deletePass(passerId: string, passedId: string): Promise<void> {
+  await prisma.pass.deleteMany({ where: { passerId, passedId } });
+}
+
+// ── Répondre à un like reçu ───────────────────────────────────────────────────
+export async function respondToLike(
+  userId:   string,
+  likerId:  string,
+  accept:   boolean,
+): Promise<{ isMatch: boolean; matchId?: string }> {
+  if (accept) {
+    const result = await likeUser(userId, likerId);
+    return { isMatch: result.isMatch, matchId: result.matchId };
+  }
+  // Refus → on passe le profil du likeur
+  await prisma.pass.upsert({
+    where:  { passerId_passedId: { passerId: userId, passedId: likerId } },
+    update: {},
+    create: { passerId: userId, passedId: likerId },
+  });
+  return { isMatch: false };
 }
 
 // ── Pass ───────────────────────────────────────────────────────────────────────

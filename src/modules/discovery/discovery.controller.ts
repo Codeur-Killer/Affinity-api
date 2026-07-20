@@ -4,6 +4,8 @@ import {
   getReceivedLikes,
   likeUser,
   passUser,
+  deletePass,
+  respondToLike,
 } from './discovery.service';
 import { getAccessStatus } from '../subscription/plan-limits';
 import { ok, badRequest, serverError } from '../../utils/response';
@@ -50,6 +52,26 @@ export async function pass(req: Request, res: Response): Promise<void> {
   try {
     await passUser(req.user!.id, req.params.userId);
     ok(res, null, 'Profil passé');
+  } catch (err: unknown) {
+    badRequest(res, err instanceof Error ? err.message : 'Erreur');
+  }
+}
+
+export async function undoPass(req: Request, res: Response): Promise<void> {
+  try {
+    await deletePass(req.user!.id, req.params.userId);
+    ok(res, null, 'Annulé');
+  } catch {
+    serverError(res);
+  }
+}
+
+export async function likeRespond(req: Request, res: Response): Promise<void> {
+  try {
+    const { likerId, accept } = req.body as { likerId: string; accept: boolean };
+    if (!likerId) { badRequest(res, 'likerId requis'); return; }
+    const result = await respondToLike(req.user!.id, likerId, accept);
+    ok(res, result, accept ? (result.isMatch ? 'C\'est un match !' : 'Like envoyé') : 'Refusé');
   } catch (err: unknown) {
     badRequest(res, err instanceof Error ? err.message : 'Erreur');
   }

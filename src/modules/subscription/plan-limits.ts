@@ -84,7 +84,14 @@ const NO_PLAN_LIMITS: PlanLimits = {
   prioritySupport: false,
 };
 
+// Cache court (30 s) pour éviter les 6 requêtes Prisma par swipe
+const _cache = new Map<string, { v: AccessStatus; exp: number }>();
+export function invalidateAccessCache(userId: string): void { _cache.delete(userId); }
+
 export async function getAccessStatus(userId: string): Promise<AccessStatus> {
+  const hit = _cache.get(userId);
+  if (hit && hit.exp > Date.now()) return hit.v;
+
   const [sub, profile, user, likesToday, superLikesToday, boostsThisMonth] = await Promise.all([
     getCurrentSubscription(userId),
     prisma.profile.findUnique({ where: { userId }, select: { isVerified: true } }),
@@ -105,7 +112,7 @@ export async function getAccessStatus(userId: string): Promise<AccessStatus> {
   const isVip      = user?.isVip ?? false;
   const limits     = isActive && sub ? PLAN_LIMITS[sub.plan] : NO_PLAN_LIMITS;
 
-  return {
+  const result: AccessStatus = {
     plan: isActive ? (sub?.plan ?? null) : null,
     isActive,
     isVerified,
@@ -114,4 +121,6 @@ export async function getAccessStatus(userId: string): Promise<AccessStatus> {
     limits,
     usage: { likesToday, superLikesToday, boostsThisMonth },
   };
+  _cache.set(userId, { v: result, exp: Date.now() + 30_000 });
+  return result;
 }
