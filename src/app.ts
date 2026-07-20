@@ -17,8 +17,9 @@ import verificationRoutes from './modules/verification/verification.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import adminRoutes    from './modules/admin/admin.routes';
 import vipRoutes      from './modules/vip/vip.routes';
-import referralRoutes from './modules/referral/referral.routes';
-import blocksRoutes   from './modules/blocks/blocks.routes';
+import referralRoutes  from './modules/referral/referral.routes';
+import blocksRoutes    from './modules/blocks/blocks.routes';
+import messagesRoutes  from './modules/messages/messages.routes';
 
 const app = express();
 
@@ -114,8 +115,9 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin',    adminRoutes);
 app.use('/api/vip',      vipRoutes);
-app.use('/api/referral', referralRoutes);
-app.use('/api/blocks',   blocksRoutes);
+app.use('/api/referral',  referralRoutes);
+app.use('/api/blocks',    blocksRoutes);
+app.use('/api/messages',  messagesRoutes);
 
 // ─── Gestion des erreurs ───────────────────────────────
 app.use(notFoundHandler);
