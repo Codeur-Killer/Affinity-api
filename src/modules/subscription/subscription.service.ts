@@ -100,7 +100,7 @@ async function createVipReferralIfNeeded(sub: {
     data: {
       vipUserId:        vipUser.id,
       subscriberUserId: sub.userId,
-      commission:       950,
+      commission:       env.VIP_COMMISSION_FCFA,
       plan:             sub.plan,
     },
   });

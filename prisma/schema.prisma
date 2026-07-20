@@ -39,6 +39,7 @@ model User {
   referralsGiven   Referral[] @relation("ReferralGiven")
   referralReceived Referral?  @relation("ReferralReceived")
   vipCommissions   VipReferral[]
+  vipWithdrawals   VipWithdrawal[]
 
   @@map("users")
 }
@@ -252,6 +253,22 @@ model VipReferral {
   createdAt        DateTime @default(now()) @map("created_at")
 
   @@map("vip_referrals")
+}
+
+// ─────────────────────────────────────────────
+// DEMANDES DE RETRAIT VIP
+// ─────────────────────────────────────────────
+model VipWithdrawal {
+  id        String   @id @default(uuid())
+  vipUserId String   @map("vip_user_id")
+  vipUser   User     @relation(fields: [vipUserId], references: [id], onDelete: Cascade)
+  amount    Int
+  status    String   @default("pending")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("vip_withdrawals")
 }
 
 // ─────────────────────────────────────────────

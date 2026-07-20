@@ -64,6 +64,55 @@ export async function subscriptions(req: Request, res: Response): Promise<void> 
   } catch { serverError(res); }
 }
 
+// ── Administrateurs ───────────────────────────────────────────────────────────
+
+export async function listAdmins(_req: Request, res: Response): Promise<void> {
+  try { ok(res, await svc.listAdmins()); }
+  catch { serverError(res); }
+}
+
+export async function createAdmin(req: Request, res: Response): Promise<void> {
+  try {
+    const { email, password, displayName } = req.body as { email?: string; password?: string; displayName?: string };
+    if (!email || !password) { badRequest(res, 'email et password requis'); return; }
+    if (password.length < 6) { badRequest(res, 'Mot de passe trop court (min 6 caractères)'); return; }
+    ok(res, await svc.createAdmin(email, password, displayName), 'Compte administrateur créé');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur création admin');
+  }
+}
+
+export async function removeAdmin(req: Request, res: Response): Promise<void> {
+  try {
+    ok(res, await svc.removeAdmin(req.params.userId, req.user!.id), 'Droits admin retirés');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur');
+  }
+}
+
+// ── Retraits VIP ──────────────────────────────────────────────────────────────
+
+export async function listVipWithdrawals(req: Request, res: Response): Promise<void> {
+  try {
+    const status = req.query.status as string | undefined;
+    ok(res, await svc.listVipWithdrawals(status));
+  } catch { serverError(res); }
+}
+
+export async function reviewWithdrawal(req: Request, res: Response): Promise<void> {
+  try {
+    const { status, note } = req.body as { status?: string; note?: string };
+    if (status !== 'approved' && status !== 'rejected') {
+      badRequest(res, 'status doit être "approved" ou "rejected"');
+      return;
+    }
+    ok(res, await svc.reviewWithdrawal(req.params.id, status, note),
+      status === 'approved' ? 'Retrait approuvé' : 'Retrait rejeté');
+  } catch (e: unknown) {
+    badRequest(res, e instanceof Error ? e.message : 'Erreur');
+  }
+}
+
 // ── VIP ───────────────────────────────────────────────────────────────────────
 
 export async function listVips(_req: Request, res: Response): Promise<void> {

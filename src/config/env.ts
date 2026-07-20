@@ -24,6 +24,7 @@ const envSchema = z.object({
   PLAN_PRICE_DECOUVERTE: z.string().default('5000'),
   PLAN_PRICE_STANDARD:   z.string().default('15000'),
   PLAN_PRICE_PREMIUM:    z.string().default('25000'),
+  VIP_COMMISSION_FCFA:   z.string().default('950'),
 
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE_MB: z.string().default('10'),
@@ -66,6 +67,7 @@ export const env = {
   PLAN_PRICE_DECOUVERTE: parseInt(parsed.data.PLAN_PRICE_DECOUVERTE, 10),
   PLAN_PRICE_STANDARD:   parseInt(parsed.data.PLAN_PRICE_STANDARD,   10),
   PLAN_PRICE_PREMIUM:    parseInt(parsed.data.PLAN_PRICE_PREMIUM,     10),
+  VIP_COMMISSION_FCFA:   parseInt(parsed.data.VIP_COMMISSION_FCFA,    10),
   IS_PROD: parsed.data.NODE_ENV === 'production',
   IS_DEV: parsed.data.NODE_ENV === 'development',
 };

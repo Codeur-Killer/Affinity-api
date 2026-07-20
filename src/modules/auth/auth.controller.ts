@@ -22,6 +22,8 @@ export async function sync(req: Request, res: Response): Promise<void> {
         email:    result.user.email,
         phone:    result.user.phone,
         provider: result.user.provider,
+        isAdmin:  result.user.isAdmin,
+        isVip:    result.user.isVip,
       },
     }, result.isNewUser ? 'Compte créé avec succès' : 'Connexion réussie');
   } catch (err: unknown) {

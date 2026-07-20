@@ -7,6 +7,8 @@ const router = Router();
 
 router.use(authenticate, requireVip);
 
-router.get('/dashboard', ctrl.dashboard);
+router.get('/dashboard',    ctrl.dashboard);
+router.get('/withdrawals',  ctrl.myWithdrawals);
+router.post('/withdrawals', ctrl.requestWithdrawal);
 
 export default router;

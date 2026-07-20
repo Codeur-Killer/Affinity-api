@@ -1,4 +1,5 @@
-import { prisma } from '../../config/prisma';
+import { prisma }          from '../../config/prisma';
+import { getFirebaseAuth } from '../../config/firebase';
 
 // ── Statistiques globales ──────────────────────────────────────────────────────
 export async function getStats() {
@@ -247,6 +248,96 @@ export async function revokeVip(userId: string) {
     where:  { id: userId },
     data:   { isVip: false, vipCode: null },
     select: { id: true, email: true, vipCode: true, isVip: true },
+  });
+}
+
+// ── Gestion des administrateurs ───────────────────────────────────────────────
+
+export async function listAdmins() {
+  return prisma.user.findMany({
+    where:   { isAdmin: true },
+    select:  { id: true, email: true, phone: true, createdAt: true, provider: true },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+export async function createAdmin(
+  email:    string,
+  password: string,
+  displayName?: string,
+) {
+  const existing = await prisma.user.findFirst({ where: { email } });
+  if (existing) {
+    if (existing.isAdmin) throw new Error('Ce compte est déjà administrateur');
+    // Promote existing user
+    await getFirebaseAuth().setCustomUserClaims(existing.firebaseUid, { isAdmin: true }).catch(() => {});
+    return prisma.user.update({
+      where:  { id: existing.id },
+      data:   { isAdmin: true },
+      select: { id: true, email: true, isAdmin: true, createdAt: true },
+    });
+  }
+
+  // Create new Firebase user
+  const fbUser = await getFirebaseAuth().createUser({
+    email,
+    password,
+    displayName: displayName ?? email.split('@')[0],
+  });
+
+  // Create backend user
+  return prisma.user.create({
+    data: {
+      firebaseUid: fbUser.uid,
+      email,
+      provider:    'email',
+      isAdmin:     true,
+    },
+    select: { id: true, email: true, isAdmin: true, createdAt: true },
+  });
+}
+
+export async function removeAdmin(userId: string, selfId: string) {
+  if (userId === selfId) throw new Error('Vous ne pouvez pas retirer vos propres droits');
+  return prisma.user.update({
+    where:  { id: userId },
+    data:   { isAdmin: false },
+    select: { id: true, email: true, isAdmin: true },
+  });
+}
+
+// ── Retraits VIP ──────────────────────────────────────────────────────────────
+
+export async function listVipWithdrawals(status?: string) {
+  const where = status ? { status } : {};
+  const withdrawals = await prisma.vipWithdrawal.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      vipUser: {
+        select: {
+          email: true,
+          phone: true,
+          vipCode: true,
+          profile: { select: { firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
+  return withdrawals;
+}
+
+export async function reviewWithdrawal(
+  id:      string,
+  status:  'approved' | 'rejected',
+  note?:   string,
+) {
+  const w = await prisma.vipWithdrawal.findUnique({ where: { id } });
+  if (!w) throw new Error('Retrait introuvable');
+  if (w.status !== 'pending') throw new Error('Ce retrait a déjà été traité');
+  return prisma.vipWithdrawal.update({
+    where: { id },
+    data:  { status, note: note ?? null, updatedAt: new Date() },
   });
 }
 

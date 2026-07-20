@@ -22,4 +22,11 @@ router.post('/vip',             ctrl.createVip);
 router.put('/vip/:userId',      ctrl.updateVip);
 router.delete('/vip/:userId',   ctrl.revokeVip);
 
+router.get('/admins',                          ctrl.listAdmins);
+router.post('/admins',                         ctrl.createAdmin);
+router.delete('/admins/:userId',               ctrl.removeAdmin);
+
+router.get('/vip-withdrawals',                 ctrl.listVipWithdrawals);
+router.patch('/vip-withdrawals/:id/review',    ctrl.reviewWithdrawal);
+
 export default router;
