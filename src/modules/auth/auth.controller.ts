@@ -80,6 +80,7 @@ export async function verifyOtpHandler(req: Request, res: Response): Promise<voi
       userId:          result.userId,
       isNewUser:       result.isNewUser,
       profileComplete: result.profileComplete,
+      firebaseToken:   result.firebaseToken, // custom token pour Firestore (utilisateurs OTP)
     }, result.isNewUser ? 'Compte créé avec succès' : 'Connexion réussie');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Code invalide';
