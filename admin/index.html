@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Affinity — Admin</title>
+<style>
+  :root {
+    --primary: #E91E8C;
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --border: #2a2a38;
+    --text: #f0f0f0;
+    --text2: #8888a0;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+
+  /* ── Login ── */
+  #login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+  }
+  .login-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 40px; width: 360px;
+  }
+  .login-card h1 { font-size: 22px; margin-bottom: 8px; }
+  .login-card p  { color: var(--text2); margin-bottom: 28px; font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; margin-top: 16px; }
+  input {
+    width: 100%; padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  .btn {
+    display: block; width: 100%; padding: 12px;
+    background: var(--primary); color: #fff; border: none;
+    border-radius: 12px; font-size: 15px; font-weight: 600;
+    cursor: pointer; margin-top: 24px; transition: opacity .2s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .error-msg { color: var(--red); font-size: 12px; margin-top: 12px; min-height: 18px; }
+
+  /* ── App shell ── */
+  #app { display: none; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 60px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar h1 { font-size: 18px; }
+  .topbar span { color: var(--text2); font-size: 13px; }
+  .logout-btn {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px;
+  }
+  .logout-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  .tabs {
+    display: flex; gap: 4px; padding: 16px 24px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    padding: 8px 18px; border-radius: 8px 8px 0 0;
+    cursor: pointer; font-size: 13px; color: var(--text2);
+    border: 1px solid transparent; border-bottom: none;
+    background: none;
+  }
+  .tab.active {
+    background: var(--bg); color: var(--text);
+    border-color: var(--border);
+  }
+
+  .page { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* ── Stats ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+  }
+  .stat-card .label { color: var(--text2); font-size: 12px; margin-bottom: 8px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; }
+  .stat-card .sub   { color: var(--text2); font-size: 11px; margin-top: 4px; }
+
+  /* ── Tables ── */
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; margin-top: 24px; }
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { background: var(--surface); color: var(--text2); font-size: 12px; font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .badge-green  { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge-red    { background: rgba(239,68,68,.15);  color: var(--red); }
+  .badge-yellow { background: rgba(245,158,11,.15); color: var(--yellow); }
+  .badge-gray   { background: rgba(136,136,160,.15); color: var(--text2); }
+
+  .action-btn {
+    padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: none; margin-right: 4px; transition: opacity .15s;
+  }
+  .action-btn:hover { opacity: .8; }
+  .btn-approve { background: rgba(34,197,94,.2); color: var(--green); }
+  .btn-reject  { background: rgba(239,68,68,.2);  color: var(--red); }
+  .btn-ban     { background: rgba(239,68,68,.15);  color: var(--red); }
+  .btn-unban   { background: rgba(34,197,94,.15);  color: var(--green); }
+
+  .img-thumb {
+    width: 80px; height: 56px; object-fit: cover;
+    border-radius: 6px; cursor: pointer; border: 1px solid var(--border);
+  }
+
+  /* ── Search ── */
+  .search-bar {
+    display: flex; gap: 10px; margin-bottom: 16px;
+  }
+  .search-bar input { flex: 1; }
+  .search-bar .btn  { width: auto; margin-top: 0; padding: 10px 20px; }
+
+  /* ── Pagination ── */
+  .pagination { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .page-btn {
+    padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); font-size: 13px;
+  }
+  .page-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .page-btn:disabled { opacity: .35; cursor: default; }
+
+  /* ── Lightbox ── */
+  #lightbox {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 90vw; max-height: 85vh; border-radius: 10px; }
+  #lightbox-close {
+    position: absolute; top: 16px; right: 20px; font-size: 28px;
+    cursor: pointer; color: #fff; background: none; border: none;
+  }
+
+  .spinner { color: var(--text2); padding: 32px; text-align: center; }
+  .config-notice {
+    background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 20px;
+    color: var(--yellow); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ LOGIN ═══════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>🔐 Affinity Admin</h1>
+    <p>Connectez-vous avec votre compte administrateur Firebase.</p>
+    <label>Email</label>
+    <input id="email-in" type="email" placeholder="admin@affinity-tg.com">
+    <label>Mot de passe</label>
+    <input id="pass-in" type="password" placeholder="••••••••">
+    <button class="btn" id="login-btn">Se connecter</button>
+    <div class="error-msg" id="login-err"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ APP ═══════════════════════ -->
+<div id="app">
+  <div class="topbar">
+    <h1>Affinity <span style="color:var(--primary)">Admin</span></h1>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span id="admin-email"></span>
+      <button class="logout-btn" id="logout-btn">Déconnexion</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-page="dashboard">Dashboard</button>
+    <button class="tab" data-page="verifications">Vérifications</button>
+    <button class="tab" data-page="users">Utilisateurs</button>
+    <button class="tab" data-page="subscriptions">Abonnements</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <div id="dash-loading" class="spinner">Chargement…</div>
+    <div id="dash-content" style="display:none">
+      <div class="stats-grid" id="stats-grid"></div>
+      <h3 class="section-title">Inscriptions — 7 derniers jours</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Jour</th><th>Nouveaux utilisateurs</th></tr></thead>
+          <tbody id="chart-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vérifications -->
+  <div class="page" id="page-verifications">
+    <h3 class="section-title">Vérifications d'identité en attente</h3>
+    <div id="verif-loading" class="spinner">Chargement…</div>
+    <div id="verif-content" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th><th>Date</th>
+              <th>Recto</th><th>Verso</th><th>Selfie</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="verif-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="verif-pages"></div>
+    </div>
+  </div>
+
+  <!-- Utilisateurs -->
+  <div class="page" id="page-users">
+    <h3 class="section-title">Utilisateurs</h3>
+    <div class="search-bar">
+      <input id="user-search" type="text" placeholder="Nom, email ou téléphone…">
+      <button class="btn" id="user-search-btn">Rechercher</button>
+    </div>
+    <div id="users-loading" class="spinner">Chargement…</div>
+    <div id="users-content" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th><th>Contact</th><th>Plan</th>
+              <th>Statut</th><th>Vérifié</th><th>Matchs</th>
+              <th>Inscrit le</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="users-pages"></div>
+    </div>
+  </div>
+
+  <!-- Abonnements -->
+  <div class="page" id="page-subscriptions">
+    <h3 class="section-title">Abonnements récents</h3>
+    <div id="subs-loading" class="spinner">Chargement…</div>
+    <div id="subs-content" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Utilisateur</th><th>Plan</th><th>Statut</th><th>Expire le</th><th>Créé le</th></tr>
+          </thead>
+          <tbody id="subs-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="subs-pages"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     CONFIGURATION — à modifier avant utilisation
+     ══════════════════════════════════════════════════════ -->
+<script>
+// ─── CONFIG ─────────────────────────────────────────────────────────────────
+const API_BASE = 'https://your-backend.onrender.com/api'; // ← URL de votre backend Render
+
+const FIREBASE_CONFIG = {
+  apiKey:     'AIzaSyBNnqF8ZllzPIfIcG7kPKzMNfX8X8vsroo',
+  authDomain: 'affinity-754ed.firebaseapp.com',
+  projectId:  'affinity-754ed',
+};
+// ────────────────────────────────────────────────────────────────────────────
+</script>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<script>
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+
+let JWT = null;      // token backend
+let currentPage = 'dashboard';
+let verifPage   = 1;
+let usersPage   = 1;
+let subsPage    = 1;
+let userSearch  = '';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function api(path, opts = {}) {
+  const res = await fetch(API_BASE + path, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(JWT ? { Authorization: `Bearer ${JWT}` } : {}),
+    },
+    ...opts,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+  return json.data ?? json;
+}
+
+function badge(text, color) {
+  return `<span class="badge badge-${color}">${text}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '–';
+  return new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function thumb(url) {
+  if (!url) return '–';
+  return `<img class="img-thumb" src="${url}" alt="" onclick="openLightbox('${url}')">`;
+}
+
+function openLightbox(url) {
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function makePagination(containerId, total, perPage, curPage, onPageClick) {
+  const pages = Math.ceil(total / perPage);
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  if (pages <= 1) return;
+  for (let i = 1; i <= pages; i++) {
+    const b = document.createElement('button');
+    b.className = 'page-btn' + (i === curPage ? ' active' : '');
+    b.textContent = i;
+    b.onclick = () => onPageClick(i);
+    c.appendChild(b);
+  }
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('login-btn').onclick = async () => {
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-err');
+  err.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Connexion…';
+  try {
+    const email = document.getElementById('email-in').value.trim();
+    const pass  = document.getElementById('pass-in').value;
+    const cred  = await auth.signInWithEmailAndPassword(email, pass);
+    const fbToken = await cred.user.getIdToken();
+    const data = await api('/auth/sync', {
+      method: 'POST',
+      body:   JSON.stringify({ firebaseToken: fbToken }),
+    });
+    if (!data.user?.isAdmin) {
+      await auth.signOut();
+      throw new Error('Ce compte n\'a pas les droits administrateur.');
+    }
+    JWT = data.token;
+    document.getElementById('admin-email').textContent = email;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadDashboard();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Se connecter';
+  }
+};
+
+document.getElementById('logout-btn').onclick = async () => {
+  await auth.signOut();
+  JWT = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+};
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const p = tab.dataset.page;
+    document.getElementById('page-' + p).classList.add('active');
+    if (p === 'dashboard')     loadDashboard();
+    if (p === 'verifications') loadVerifications(1);
+    if (p === 'users')         loadUsers(1);
+    if (p === 'subscriptions') loadSubscriptions(1);
+  };
+});
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  document.getElementById('dash-loading').style.display = 'block';
+  document.getElementById('dash-content').style.display = 'none';
+  try {
+    const [stats, chart] = await Promise.all([
+      api('/admin/stats'),
+      api('/admin/chart/registrations'),
+    ]);
+
+    const grid = document.getElementById('stats-grid');
+    grid.innerHTML = `
+      <div class="stat-card"><div class="label">Utilisateurs total</div><div class="value">${stats.users.total.toLocaleString()}</div><div class="sub">+${stats.users.newThisMonth} ce mois</div></div>
+      <div class="stat-card"><div class="label">Profils actifs</div><div class="value">${stats.users.active.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">En attente vérif.</div><div class="value" style="color:var(--yellow)">${stats.profiles.pendingVerification}</div></div>
+      <div class="stat-card"><div class="label">Profils vérifiés</div><div class="value" style="color:var(--green)">${stats.profiles.verified}</div></div>
+      <div class="stat-card"><div class="label">Matchs total</div><div class="value">${stats.matches.total.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">Abonnements actifs</div><div class="value">${stats.subscriptions.active}</div><div class="sub">D:${stats.subscriptions.decouverte} S:${stats.subscriptions.standard} P:${stats.subscriptions.premium}</div></div>
+      <div class="stat-card"><div class="label">Revenus estimés</div><div class="value" style="color:var(--primary)">${stats.revenue.fcfa}</div></div>
+    `;
+
+    const tbody = document.getElementById('chart-body');
+    tbody.innerHTML = chart.map(r =>
+      `<tr><td>${r.date}</td><td>${r.users > 0 ? `<strong>${r.users}</strong>` : r.users}</td></tr>`
+    ).join('');
+
+    document.getElementById('dash-loading').style.display = 'none';
+    document.getElementById('dash-content').style.display = 'block';
+  } catch (e) {
+    document.getElementById('dash-loading').textContent = 'Erreur : ' + e.message;
+  }
+}
+
+// ─── Vérifications ────────────────────────────────────────────────────────────
+
+async function loadVerifications(page) {
+  verifPage = page;
+  document.getElementById('verif-loading').style.display = 'block';
+  document.getElementById('verif-content').style.display = 'none';
+  try {
+    const data = await api(`/admin/verifications?page=${page}&limit=15`);
+    const verifs = data.verifications ?? [];
+    const total  = data.pagination?.total ?? 0;
+
+    const tbody = document.getElementById('verif-body');
+    if (!verifs.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:32px">Aucune vérification en attente</td></tr>';
+    } else {
+      tbody.innerHTML = verifs.map(v => {
+        const name = v.user?.profile?.firstName
+          ? `${v.user.profile.firstName} ${v.user.profile.lastName || ''}`.trim()
+          : v.user?.email ?? v.user?.phone ?? v.userId;
+        return `<tr>
+          <td>${name}</td>
+          <td>${fmtDate(v.createdAt)}</td>
+          <td>${thumb(v.idFrontUrl)}</td>
+          <td>${thumb(v.idBackUrl)}</td>
+          <td>${thumb(v.selfieUrl)}</td>
+          <td>
+            <button class="action-btn btn-approve" onclick="reviewVerif('${v.userId}', true)">✓ Approuver</button>
+            <button class="action-btn btn-reject"  onclick="reviewVerif('${v.userId}', false)">✗ Rejeter</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    makePagination('verif-pages', total, 15, page, loadVerifications);
+    document.getElementById('verif-loading').style.display = 'none';
+    document.getElementById('verif-content').style.display = 'block';
+  } catch (e) {
+    document.getElementById('verif-loading').textContent = 'Erreur : ' + e.message;
+  }
+}
+
+async function reviewVerif(userId, approved) {
+  try {
+    await api(`/admin/verifications/${userId}/review`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ approved }),
+    });
+    loadVerifications(verifPage);
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  }
+}
+
+// ─── Utilisateurs ─────────────────────────────────────────────────────────────
+
+document.getElementById('user-search-btn').onclick = () => {
+  userSearch = document.getElementById('user-search').value.trim();
+  loadUsers(1);
+};
+document.getElementById('user-search').onkeydown = e => {
+  if (e.key === 'Enter') document.getElementById('user-search-btn').click();
+};
+
+async function loadUsers(page) {
+  usersPage = page;
+  document.getElementById('users-loading').style.display = 'block';
+  document.getElementById('users-content').style.display = 'none';
+  try {
+    const q = new URLSearchParams({ page, limit: 20, ...(userSearch ? { search: userSearch } : {}) });
+    const data = await api('/admin/users?' + q);
+    const users = data.users ?? [];
+    const total = data.pagination?.total ?? 0;
+
+    const tbody = document.getElementById('users-body');
+    tbody.innerHTML = users.map(u => {
+      const name    = u.profile ? `${u.profile.firstName} ${u.profile.lastName || ''}`.trim() : '–';
+      const contact = u.email ?? u.phone ?? '–';
+      const plan    = u.subscription?.plan;
+      const active  = u.subscription?.fedapayStatus === 'approved' && new Date(u.subscription?.expiresAt) > new Date();
+      const planBadge = plan
+        ? badge(plan, active ? 'green' : 'gray')
+        : badge('Aucun', 'gray');
+      const verifiedBadge = u.profile?.isVerified ? badge('Vérifié', 'green') : badge('Non', 'gray');
+      const statusBadge   = u.profile?.isActive !== false ? badge('Actif', 'green') : badge('Banni', 'red');
+      const banned = u.profile?.isActive === false;
+
+      return `<tr>
+        <td>${name}</td>
+        <td style="color:var(--text2)">${contact}</td>
+        <td>${planBadge}</td>
+        <td>${statusBadge}</td>
+        <td>${verifiedBadge}</td>
+        <td>${u.matchCount}</td>
+        <td style="color:var(--text2)">${fmtDate(u.createdAt)}</td>
+        <td>
+          ${banned
+            ? `<button class="action-btn btn-unban" onclick="banUser('${u.id}', false)">Débannir</button>`
+            : `<button class="action-btn btn-ban"   onclick="banUser('${u.id}', true)">Bannir</button>`
+          }
+        </td>
+      </tr>`;
+    }).join('');
+
+    makePagination('users-pages', total, 20, page, loadUsers);
+    document.getElementById('users-loading').style.display = 'none';
+    document.getElementById('users-content').style.display = 'block';
+  } catch (e) {
+    document.getElementById('users-loading').textContent = 'Erreur : ' + e.message;
+  }
+}
+
+async function banUser(userId, banned) {
+  const action = banned ? 'bannir' : 'débannir';
+  if (!confirm(`Confirmer : ${action} cet utilisateur ?`)) return;
+  try {
+    await api(`/admin/users/${userId}/ban`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ banned }),
+    });
+    loadUsers(usersPage);
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  }
+}
+
+// ─── Abonnements ──────────────────────────────────────────────────────────────
+
+async function loadSubscriptions(page) {
+  subsPage = page;
+  document.getElementById('subs-loading').style.display = 'block';
+  document.getElementById('subs-content').style.display = 'none';
+  try {
+    const data = await api(`/admin/subscriptions?page=${page}&limit=20`);
+    const subs  = data.subscriptions ?? [];
+    const total = data.pagination?.total ?? 0;
+
+    const tbody = document.getElementById('subs-body');
+    tbody.innerHTML = subs.map(s => {
+      const name    = s.user?.profile
+        ? `${s.user.profile.firstName} ${s.user.profile.lastName || ''}`.trim()
+        : s.user?.email ?? s.user?.phone ?? s.userId;
+      const active  = s.fedapayStatus === 'approved' && new Date(s.expiresAt) > new Date();
+      const planColors = { DECOUVERTE: 'yellow', STANDARD: 'green', PREMIUM: 'green' };
+      return `<tr>
+        <td>${name}</td>
+        <td>${badge(s.plan, planColors[s.plan] ?? 'gray')}</td>
+        <td>${badge(s.fedapayStatus, active ? 'green' : 'gray')}</td>
+        <td style="color:${active ? 'var(--green)' : 'var(--red)'}">${fmtDate(s.expiresAt)}</td>
+        <td style="color:var(--text2)">${fmtDate(s.createdAt)}</td>
+      </tr>`;
+    }).join('');
+
+    makePagination('subs-pages', total, 20, page, loadSubscriptions);
+    document.getElementById('subs-loading').style.display = 'none';
+    document.getElementById('subs-content').style.display = 'block';
+  } catch (e) {
+    document.getElementById('subs-loading').textContent = 'Erreur : ' + e.message;
+  }
+}
+
+// ─── Lightbox ─────────────────────────────────────────────────────────────────
+document.getElementById('lightbox-close').onclick = () =>
+  document.getElementById('lightbox').classList.remove('open');
+document.getElementById('lightbox').onclick = (e) => {
+  if (e.target === document.getElementById('lightbox'))
+    document.getElementById('lightbox').classList.remove('open');
+};
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ export const createProfileSchema = z.object({
   birthdate: z.string().refine((d) => !isNaN(Date.parse(d)), 'Date invalide'),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
   interests: z.array(z.string()).min(1).max(14),
-  relationshipGoal: z.enum(['FLIRT', 'LOVE']),
+  relationshipGoal: z.enum(['FLIRT', 'FRIENDSHIP', 'LOVE']),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   city: z.string().max(100).optional(),

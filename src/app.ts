@@ -97,6 +97,9 @@ if (env.IS_DEV) {
 // ─── Fichiers statiques (uploads) ──────────────────────
 app.use('/uploads', express.static(path.join(process.cwd(), env.UPLOAD_DIR)));
 
+// ─── Panel admin (HTML statique) ───────────────────────
+app.use('/admin', express.static(path.join(process.cwd(), 'admin')));
+
 
 // ─── Page résultat paiement (interceptée par Flutter) ──
 app.get('/api/subscription/result', (req, res) => {

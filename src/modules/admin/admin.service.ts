@@ -341,24 +341,32 @@ export async function reviewWithdrawal(
   });
 }
 
-// ── Graphique inscriptions (7 derniers jours) ─────────────────────────────────
+// ── Graphique inscriptions (7 derniers jours) — requête unique ────────────────
 export async function getRegistrationChart() {
-  const days = 7;
-  const data = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const start = new Date();
-    start.setDate(start.getDate() - i);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setHours(23, 59, 59, 999);
+  const days  = 7;
+  const since = new Date();
+  since.setDate(since.getDate() - (days - 1));
+  since.setHours(0, 0, 0, 0);
 
-    const count = await prisma.user.count({
-      where: { createdAt: { gte: start, lte: end } },
-    });
-    data.push({
-      date:  start.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
-      users: count,
-    });
-  }
-  return data;
+  const rows = await prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+    SELECT DATE_TRUNC('day', created_at) AS day, COUNT(*) AS count
+    FROM users
+    WHERE created_at >= ${since}
+    GROUP BY day
+    ORDER BY day ASC
+  `;
+
+  const countByDay = new Map(
+    rows.map((r) => [r.day.toISOString().slice(0, 10), Number(r.count)]),
+  );
+
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(since);
+    d.setDate(since.getDate() + i);
+    const key  = d.toISOString().slice(0, 10);
+    return {
+      date:  d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+      users: countByDay.get(key) ?? 0,
+    };
+  });
 }
