@@ -20,12 +20,19 @@ const router = Router();
 // Configurer FedaPay pour appeler : /api/subscription/webhook?token=FEDAPAY_WEBHOOK_SECRET
 function webhookGuard(req: Request, res: Response, next: NextFunction): void {
   const secret = env.FEDAPAY_WEBHOOK_SECRET;
-  if (secret) {
-    const token = (req.query.token as string | undefined) ?? req.headers['x-webhook-secret'];
-    if (token !== secret) {
-      res.status(401).json({ success: false, message: 'Token webhook invalide' });
+  if (!secret) {
+    // Si le secret n'est pas configuré, bloquer en production pour éviter les abus
+    if (env.IS_PROD) {
+      res.status(503).json({ success: false, message: 'Webhook non configuré' });
       return;
     }
+    next(); // autorisé en développement sans secret
+    return;
+  }
+  const token = (req.query.token as string | undefined) ?? req.headers['x-webhook-secret'];
+  if (token !== secret) {
+    res.status(401).json({ success: false, message: 'Token webhook invalide' });
+    return;
   }
   next();
 }

@@ -11,7 +11,7 @@ import {
   validateVipCode,
 } from './subscription.service';
 import { getAccessStatus } from './plan-limits';
-import { ok, badRequest, forbidden, serverError } from '../../utils/response';
+import { ok, badRequest, forbidden, unauthorized, serverError } from '../../utils/response';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 
@@ -78,7 +78,7 @@ export async function checkout(req: Request, res: Response): Promise<void> {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id }, include: { profile: true },
     });
-    if (!user) { badRequest(res, 'Utilisateur introuvable'); return; }
+    if (!user) { unauthorized(res, 'Session expirée. Reconnectez-vous.'); return; }
 
     const customer = {
       email:     user.email ?? `user_${user.id}@affinity.app`,
@@ -120,15 +120,16 @@ export async function mobilePay(req: Request, res: Response): Promise<void> {
       badRequest(res, 'Numéro de téléphone invalide');
       return;
     }
-    if (!network) {
-      badRequest(res, 'Réseau requis (tm_money, flooz, mtn)');
+    const VALID_NETWORKS = ['tm_money', 'flooz', 'mtn'];
+    if (!network || !VALID_NETWORKS.includes(network)) {
+      badRequest(res, `Réseau invalide. Valeurs acceptées : ${VALID_NETWORKS.join(', ')}`);
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id }, include: { profile: true },
     });
-    if (!user) { badRequest(res, 'Utilisateur introuvable'); return; }
+    if (!user) { unauthorized(res, 'Session expirée. Reconnectez-vous.'); return; }
 
     const result = await payMobileMoney({
       userId:   req.user!.id,

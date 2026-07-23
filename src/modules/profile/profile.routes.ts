@@ -8,6 +8,7 @@ import {
   deletePhoto,
   patchLocation,
   visitProfile,
+  reportProfile,
 } from './profile.controller';
 import { authenticate } from '../../middleware/auth.middleware';
 import { validate } from '../../middleware/validate.middleware';
@@ -22,7 +23,8 @@ router.post('/complete', validate(createProfileSchema), completeProfile);
 router.get('/me', getMe);
 router.put('/me', validate(updateProfileSchema), update);
 router.get('/:userId', getProfile);
-router.post('/:userId/visit', visitProfile);
+router.post('/:userId/visit',  visitProfile);
+router.post('/:userId/report', reportProfile);
 router.patch('/me/location', validate(locationSchema), patchLocation);
 
 router.post('/me/photos', (req: Request, res: Response, next: NextFunction) => {

@@ -40,9 +40,26 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 
 export async function getProfile(req: Request, res: Response): Promise<void> {
   try {
-    const profile = await getProfileById(req.params.userId);
+    const viewerId  = req.user!.id;
+    const targetId  = req.params.userId;
+
+    // Vérifier qu'il n'y a pas de blocage dans un sens ou l'autre
+    const block = await prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: viewerId, blockedId: targetId },
+          { blockerId: targetId, blockedId: viewerId },
+        ],
+      },
+    });
+    if (block) { notFound(res, 'Profil introuvable'); return; }
+
+    const profile = await getProfileById(targetId);
     if (!profile) { notFound(res, 'Profil introuvable'); return; }
-    ok(res, profile);
+
+    // Ne pas exposer les coordonnées GPS exactes au client
+    const { latitude, longitude, ...safeProfile } = profile;
+    ok(res, safeProfile);
   } catch { serverError(res); }
 }
 
@@ -139,6 +156,35 @@ export async function visitProfile(req: Request, res: Response): Promise<void> {
           { type: 'VISIT', visitorId },
         ).catch(() => {});
       }
+    }
+
+    ok(res, null);
+  } catch { serverError(res); }
+}
+
+export async function reportProfile(req: Request, res: Response): Promise<void> {
+  try {
+    const reporterId  = req.user!.id;
+    const reportedId  = req.params.userId;
+    const { reason }  = req.body as { reason?: string };
+
+    if (reporterId === reportedId) { badRequest(res, 'Vous ne pouvez pas vous signaler vous-même.'); return; }
+
+    const admins = await prisma.user.findMany({
+      where:  { isAdmin: true },
+      select: { id: true },
+    });
+
+    if (admins.length > 0) {
+      await prisma.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          type:   'SYSTEM' as const,
+          title:  '🚨 Signalement de profil',
+          body:   `Raison : ${reason ?? 'Non précisée'}.`,
+          data:   { type: 'PROFILE_REPORT', reporterId, reportedUserId: reportedId },
+        })),
+      });
     }
 
     ok(res, null);

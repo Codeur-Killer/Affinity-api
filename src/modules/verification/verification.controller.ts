@@ -24,7 +24,7 @@ export async function uploadIdCard(req: Request, res: Response): Promise<void> {
       uploadFileToCloud(back,  'affinity/verification'),
     ]);
 
-    console.log('[verification/id-card] uploadés →', frontUrl, backUrl);
+    console.log('[verification/id-card] uploadés → OK');
 
     const verification = await submitIdCard(req.user!.id, frontUrl, backUrl);
     ok(res, verification, "Carte d'identité soumise avec succès");
@@ -49,7 +49,7 @@ export async function uploadSelfie(req: Request, res: Response): Promise<void> {
     }
 
     const selfieUrl   = await uploadFileToCloud(file, 'affinity/verification');
-    console.log('[verification/selfie] uploadé →', selfieUrl);
+    console.log('[verification/selfie] uploadé → OK');
 
     const verification = await submitSelfie(req.user!.id, selfieUrl);
     ok(res, verification, 'Selfie soumis avec succès');
