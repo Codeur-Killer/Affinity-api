@@ -138,6 +138,13 @@ export async function reviewVerification(
 ) {
   const status = approved ? 'APPROVED' : 'REJECTED';
 
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  if (!profile) {
+    throw new Error(
+      "Ce compte n'a pas encore de profil (inscription incomplète) : impossible de valider son identité.",
+    );
+  }
+
   await prisma.$transaction([
     prisma.verification.update({
       where: { userId },

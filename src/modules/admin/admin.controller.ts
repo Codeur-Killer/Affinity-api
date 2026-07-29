@@ -53,7 +53,10 @@ export async function reviewVerification(req: Request, res: Response): Promise<v
     if (approved === undefined) { badRequest(res, 'approved requis'); return; }
     ok(res, await svc.reviewVerification(req.params.userId, approved),
       approved ? 'Profil vérifié ✓' : 'Vérification rejetée');
-  } catch { serverError(res); }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : undefined;
+    serverError(res, msg);
+  }
 }
 
 export async function subscriptions(req: Request, res: Response): Promise<void> {
