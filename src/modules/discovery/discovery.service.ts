@@ -225,11 +225,7 @@ export async function likeUser(
 
   const access = await getAccessStatus(senderId);
   if (!access.canSwipe) {
-    throw new Error(
-      !access.isActive
-        ? 'Un abonnement actif est requis pour liker des profils'
-        : 'Votre identité doit être vérifiée pour liker des profils',
-    );
+    throw new Error('Votre identité doit être vérifiée pour liker des profils');
   }
   if (isSuperLike) {
     if (access.limits.dailySuperLikes !== null
@@ -283,6 +279,13 @@ export async function likeUser(
         matchId:        existing.id,
         conversationId: existing.conversationId ?? undefined,
       };
+    }
+
+    // Like mutuel, mais pas d'abonnement actif → le like est bien enregistré
+    // (ci-dessus) mais le match ne se crée pas tant que l'utilisateur n'est pas abonné.
+    if (!access.canMatch) {
+      invalidateAccessCache(senderId);
+      return { liked: true, isMatch: false };
     }
 
     // ── Créer le match ──────────────────────────────────────────────────────
@@ -409,11 +412,7 @@ export async function passUser(
 
   const access = await getAccessStatus(passerId);
   if (!access.canSwipe) {
-    throw new Error(
-      !access.isActive
-        ? 'Un abonnement actif est requis pour passer des profils'
-        : 'Votre identité doit être vérifiée pour passer des profils',
-    );
+    throw new Error('Votre identité doit être vérifiée pour passer des profils');
   }
 
   await prisma.pass.upsert({

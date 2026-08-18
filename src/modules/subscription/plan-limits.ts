@@ -50,7 +50,8 @@ export interface AccessStatus {
   plan: Plan | null;
   isActive: boolean;
   isVerified: boolean;
-  canSwipe: boolean;
+  canSwipe: boolean;  // liker/passer un profil — nécessite seulement une identité vérifiée
+  canMatch: boolean;  // qu'un like mutuel se transforme en match — nécessite un abonnement actif
   isVip: boolean;
   limits: PlanLimits;
   usage: {
@@ -74,7 +75,7 @@ function startOfMonth(): Date {
 }
 
 const NO_PLAN_LIMITS: PlanLimits = {
-  dailyLikes: 0,
+  dailyLikes: null, // le swipe/like reste libre sans abonnement — seul le match est verrouillé
   dailySuperLikes: 0,
   boostsPerMonth: 0,
   canSeeWhoLikedYou: false,
@@ -116,7 +117,8 @@ export async function getAccessStatus(userId: string): Promise<AccessStatus> {
     plan: isActive ? (sub?.plan ?? null) : null,
     isActive,
     isVerified,
-    canSwipe: isActive && isVerified,
+    canSwipe: isVerified,
+    canMatch: isActive && isVerified,
     isVip,
     limits,
     usage: { likesToday, superLikesToday, boostsThisMonth },

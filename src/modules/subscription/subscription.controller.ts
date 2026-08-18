@@ -44,6 +44,7 @@ export async function getSubscription(req: Request, res: Response): Promise<void
       plan:         access.plan,
       isVerified:   access.isVerified,
       canSwipe:     access.canSwipe,
+      canMatch:     access.canMatch,
       isVip:        access.isVip,
       limits:       access.limits,
       usage:        access.usage,
