@@ -135,6 +135,27 @@ export async function verifyOtp(rawPhone: string, code: string): Promise<OtpVeri
     });
   }
 
+  // Si c'est le compte de test Google Play, lui attribuer immédiatement VIP, profil vérifié et abonnement Premium à vie
+  const isTestAccount = (!!env.TEST_ACCOUNT_PHONE && phone === env.TEST_ACCOUNT_PHONE) || phone === '+22890000000';
+  if (isTestAccount) {
+    const expiresAt = new Date('2099-12-31T23:59:59.999Z');
+    await Promise.all([
+      prisma.user.update({
+        where: { id: user.id },
+        data:  { isVip: true },
+      }).catch(() => {}),
+      prisma.profile.updateMany({
+        where: { userId: user.id },
+        data:  { isVerified: true },
+      }).catch(() => {}),
+      prisma.subscription.upsert({
+        where:  { userId: user.id },
+        update: { plan: 'PREMIUM', fedapayStatus: 'approved', fedapayTxId: 'PLAYSTORE_TESTER', expiresAt },
+        create: { userId: user.id, plan: 'PREMIUM', fedapayStatus: 'approved', fedapayTxId: 'PLAYSTORE_TESTER', expiresAt },
+      }).catch(() => {}),
+    ]);
+  }
+
   const token         = signToken({ userId: user.id, firebaseUid: user.firebaseUid, email: user.email });
   const profileComplete = !!(user as typeof user & { profile: unknown }).profile;
 
