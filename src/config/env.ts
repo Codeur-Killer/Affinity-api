@@ -34,6 +34,12 @@ const envSchema = z.object({
   SMS_CLIENT_ID: z.string().optional(),
   SMS_SENDER_ID: z.string().default('Affinity'),
 
+  // Compte de démo pour la revue Google Play (App access) : ce numéro reçoit
+  // toujours le même code OTP fixe, sans passer par le SMS — les reviewers
+  // n'ont pas de téléphone togolais pour recevoir un vrai SMS.
+  TEST_ACCOUNT_PHONE: z.string().optional(),
+  TEST_ACCOUNT_OTP_CODE: z.string().default('1234'),
+
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),

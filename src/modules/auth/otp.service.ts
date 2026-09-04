@@ -54,9 +54,13 @@ async function sendSmsAfrik(phone: string, message: string): Promise<void> {
 
 // ── Envoie un OTP ──────────────────────────────────────────────────────────────
 export async function sendOtp(rawPhone: string): Promise<void> {
-  const phone     = formatTogoPhone(rawPhone);
-  const code      = generateOtpCode();
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+  const phone = formatTogoPhone(rawPhone);
+
+  // Compte de démo Google Play (App access) : code fixe, pas de vrai SMS —
+  // le reviewer n'a pas de ligne togolaise pour recevoir un SMS.
+  const isTestAccount = !!env.TEST_ACCOUNT_PHONE && phone === env.TEST_ACCOUNT_PHONE;
+  const code           = isTestAccount ? env.TEST_ACCOUNT_OTP_CODE : generateOtpCode();
+  const expiresAt      = new Date(Date.now() + OTP_EXPIRY_MS);
 
   // Invalide les anciens codes
   await prisma.otpCode.updateMany({
@@ -69,6 +73,11 @@ export async function sendOtp(rawPhone: string): Promise<void> {
   // En développement uniquement pour faciliter les tests
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[OTP DEV] ${phone} → ${code}`);
+  }
+
+  if (isTestAccount) {
+    console.log(`[OTP] Compte de démo Play Store (${phone}) → code fixe, SMS non envoyé`);
+    return;
   }
 
   if (env.SMS_API_KEY && env.SMS_CLIENT_ID) {
